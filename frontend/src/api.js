@@ -1,7 +1,11 @@
 import axios from "axios";
 
+const defaultUrl = typeof window !== "undefined" && window.location.hostname.includes("onrender.com")
+  ? "https://leave-management-system-1-9uph.onrender.com/api"
+  : "http://localhost:8080/api";
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080/api",
+  baseURL: import.meta.env.VITE_API_URL || defaultUrl,
 });
 
 // Attach the JWT to every request

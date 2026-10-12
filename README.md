@@ -4,6 +4,8 @@ A full-stack web app where employees register, apply for leave and track their r
 
 **Stack:** React (Vite, React Router, Axios) · Spring Boot 4 (Java 17, Spring Web, Spring Data JPA, Spring Security) · MySQL 8 · JWT authentication
 
+> 📖 **Architecture & Flow Guide**: See [SYSTEM_FLOW.md](./SYSTEM_FLOW.md) for sequence diagrams, end-to-end user workflows, security mechanisms, and codebase breakdown.
+
 ## Features
 
 - Registration, login and logout (JWT, passwords hashed with BCrypt)

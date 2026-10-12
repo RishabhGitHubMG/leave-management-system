@@ -295,14 +295,18 @@ frontend/src/
 ├── main.jsx                        # React root entrypoint
 ├── App.jsx                         # React Router routes and Protected wrappers
 ├── auth.jsx                        # AuthContext, user state, localStorage sync
-├── api.js                          # Axios instance, baseURL resolution, JWT interceptor
-├── styles.css                      # Design tokens, layout, dark/light theme, badges
+├── api.js                          # Axios instance, baseURL resolution, 15s timeout, JWT interceptor
+├── styles.css                      # Design tokens, responsive grid, dark/light theme, badges
 ├── pages/
-│   ├── AuthPage.jsx                # Dual-mode Sign In / Sign Up component
-│   └── Dashboard.jsx               # Main application dashboard (Employee + Admin)
+│   ├── LandingPage.jsx             # Public landing page with hero, mockup preview, benefits, security
+│   ├── AuthPage.jsx                # Dual-mode Sign In / Sign Up component with inline validation & strength meter
+│   └── Dashboard.jsx               # Main application dashboard (4 KPIs, search, filters, sorting, modals)
 └── components/
-    └── LeaveForm.jsx               # Form component for creating & editing leaves
+    ├── SettribeLogo.jsx            # Official Settribe vector SVG brand logo with accent bar
+    ├── LeaveForm.jsx               # Accessible modal form with duration calculation & character counter
+    └── ConfirmModal.jsx            # Accessible in-app confirmation modal (replaces window.confirm)
 ```
+
 
 ---
 

@@ -12,7 +12,9 @@ const defaultUrl = typeof window !== "undefined" && window.location.hostname.inc
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || defaultUrl,
+  timeout: 15000, // 15 second request timeout
 });
+
 
 /**
  * Request Interceptor:
@@ -50,11 +52,17 @@ api.interceptors.response.use(
  * - General backend error message string.
  */
 export function errMsg(e) {
-  if (!e.response) return "Can't reach the server. Check that the backend is running.";
+  if (e.code === "ECONNABORTED" || e.message?.toLowerCase().includes("timeout")) {
+    return "Request timed out. The server took too long to respond. Please try again.";
+  }
+  if (!e.response) {
+    return "Can't reach the server. Please check your network connection or verify that the backend is running.";
+  }
   const d = e.response.data;
   if (d?.errors && Object.keys(d.errors).length) return Object.values(d.errors).join(". ");
   return d?.message || "Something went wrong. Try again.";
 }
+
 
 export default api;
 

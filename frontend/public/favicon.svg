@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="14" fill="#0f2b48"/>
+  <defs>
+    <linearGradient id="limeGrad" x1="0" y1="0" x2="64" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#84cc16"/>
+      <stop offset="50%" stop-color="#a3e635"/>
+      <stop offset="100%" stop-color="#eab308"/>
+    </linearGradient>
+  </defs>
+  <!-- Stylized 'ST' monogram -->
+  <text x="32" y="38" text-anchor="middle" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="900" font-size="28" fill="#ffffff" letter-spacing="-1">ST</text>
+  <!-- Settribe accent bar -->
+  <rect x="12" y="46" width="40" height="4" rx="2" fill="url(#limeGrad)"/>
+</svg>

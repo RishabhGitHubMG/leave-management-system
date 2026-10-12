@@ -26,7 +26,8 @@ public record LeaveRequestDto(
         LocalDate toDate,
 
         @NotBlank(message = "Reason is required")
-        @Size(max = 500, message = "Reason must be at most 500 characters")
+        @Size(min = 10, max = 500, message = "Reason must be between 10 and 500 characters")
         String reason
 ) {}
+
 

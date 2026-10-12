@@ -1,94 +1,344 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
+import SettribeLogo from "../components/SettribeLogo";
+
+// Regex validations
+const NAME_REGEX = /^[a-zA-Z\u00C0-\u017F\s'-]{2,100}$/;
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 /**
- * Dual-purpose Authentication Page component.
- * Supports both "login" and "register" modes based on the mode prop.
+ * Calculates a 4-tier password strength score
+ * @param {string} pwd
+ * @returns {{ score: number, label: string, color: string }}
+ */
+function getPasswordStrength(pwd) {
+  if (!pwd) return { score: 0, label: "", color: "" };
+  let s = 0;
+  if (pwd.length >= 8) s += 1;
+  if (pwd.length >= 12) s += 1;
+  if (/[0-9]/.test(pwd)) s += 1;
+  if (/[A-Z]/.test(pwd) && /[^A-Za-z0-9]/.test(pwd)) s += 1;
+
+  if (s <= 1) return { score: 1, label: "Weak", color: "#ef4444" };
+  if (s === 2) return { score: 2, label: "Fair", color: "#f59e0b" };
+  if (s === 3) return { score: 3, label: "Good", color: "#3b82f6" };
+  return { score: 4, label: "Strong", color: "#10b981" };
+}
+
+/**
+ * AuthPage Component
  * 
- * @param {string} mode - Either "login" or "register".
+ * Re-architected dual-mode authentication page for Settribe.
+ * Features:
+ * - Settribe brand vector header
+ * - Field-level inline validation (Name, RFC Email, Password, Confirm Password)
+ * - Password strength visual indicator
+ * - Accessible eye-toggle for password visibility
+ * - Explicit keyboard focus & ARIA error relationships
  */
 export default function AuthPage({ mode }) {
   const isLogin = mode === "login";
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Controlled form state for user inputs
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
-  // Error message displayed in banner alert
-  const [error, setError] = useState("");
-  // Busy indicator to disable submit button during active API call
-  const [busy, setBusy] = useState(false);
+  // Controlled form state
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
 
-  // Helper to update specific form field state
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  // Field-specific validation errors
+  const [errors, setErrors] = useState({});
+  // General server/network error banner
+  const [serverError, setServerError] = useState("");
+  // Busy lock state during active API requests
+  const [busy, setBusy] = useState(false);
+  // Show / Hide password toggles
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Field change handler
+  const handleChange = (field) => (e) => {
+    const val = e.target.value;
+    setForm((prev) => ({ ...prev, [field]: val }));
+    // Clear field-specific error as user types
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: "" }));
+    }
+  };
 
   /**
-   * Handles form submission:
-   * 1. Validates inputs on the client side (name, email, minimum password length).
-   * 2. Sends POST request to /auth/login or /auth/register.
-   * 3. Stores session and redirects to /dashboard upon success.
+   * Comprehensive client-side validation before dispatch
    */
-  const submit = async (e) => {
-    e.preventDefault();
-    setError("");
+  const validateForm = () => {
+    const errs = {};
 
-    // Client-side validations
-    if (!isLogin && !form.name.trim()) return setError("Enter your name.");
-    if (!form.email.trim()) return setError("Enter your email.");
-    if (!isLogin && form.password.length < 8) return setError("Password must be at least 8 characters.");
-    if (isLogin && !form.password) return setError("Enter your password.");
+    // Validate Name (Registration only)
+    if (!isLogin) {
+      const trimmedName = form.name.trim();
+      if (!trimmedName) {
+        errs.name = "Full name is required.";
+      } else if (!NAME_REGEX.test(trimmedName)) {
+        errs.name = "Name must contain 2-100 letters, spaces, hyphens, or apostrophes.";
+      }
+    }
+
+    // Validate Email
+    const trimmedEmail = form.email.trim();
+    if (!trimmedEmail) {
+      errs.email = "Email address is required.";
+    } else if (!EMAIL_REGEX.test(trimmedEmail)) {
+      errs.email = "Enter a valid email address with a domain (e.g. name@company.com).";
+    }
+
+    // Validate Password
+    if (!form.password) {
+      errs.password = "Password is required.";
+    } else if (!isLogin && form.password.length < 8) {
+      errs.password = "Password must be at least 8 characters long.";
+    }
+
+    // Validate Confirm Password (Registration only)
+    if (!isLogin) {
+      if (!form.confirmPassword) {
+        errs.confirmPassword = "Confirm your password.";
+      } else if (form.confirmPassword !== form.password) {
+        errs.confirmPassword = "Passwords do not match.";
+      }
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  /**
+   * Handles Form Submission
+   */
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setServerError("");
+
+    if (!validateForm()) return;
 
     setBusy(true);
     try {
-      // Build request body (registration requires name, login only email & password)
-      const body = isLogin ? { email: form.email, password: form.password } : form;
-      const { data } = await api.post(isLogin ? "/auth/login" : "/auth/register", body);
+      const endpoint = isLogin ? "/auth/login" : "/auth/register";
+      const payload = isLogin
+        ? { email: form.email.trim(), password: form.password }
+        : { name: form.name.trim(), email: form.email.trim(), password: form.password };
+
+      const { data } = await api.post(endpoint, payload);
 
       // Save user session in AuthContext and navigate to dashboard
       login(data);
       navigate("/dashboard");
     } catch (err) {
-      // Display formatted error message from backend
-      setError(errMsg(err));
+      setServerError(errMsg(err));
     } finally {
       setBusy(false);
     }
   };
 
+  const strength = !isLogin ? getPasswordStrength(form.password) : null;
+
   return (
-    <main className="auth">
-      <form className="panel" onSubmit={submit} noValidate>
-        <h1>{isLogin ? "Sign in" : "Create your account"}</h1>
-        <p className="muted">{isLogin ? "Manage your leave requests." : "Employees can apply for leave and track it."}</p>
+    <div className="auth-wrapper">
+      <Link to="/" style={{ marginBottom: "28px", textDecoration: "none" }} aria-label="Settribe Home">
+        <SettribeLogo height={44} />
+      </Link>
 
-        {/* Dynamic Error Banner */}
-        {error && <div className="banner error" role="alert">{error}</div>}
+      <div className="auth-card">
+        <header className="auth-header">
+          <h1>{isLogin ? "Welcome back" : "Create an account"}</h1>
+          <p className="muted">
+            {isLogin
+              ? "Sign in to manage and review your time-off requests."
+              : "Register to submit and track your employee leave requests."}
+          </p>
+        </header>
 
-        {/* Name input (only shown in register mode) */}
-        {!isLogin && (
-          <label>Name<input value={form.name} onChange={set("name")} autoComplete="name" /></label>
+        {/* Global Server Error Banner */}
+        {serverError && (
+          <div className="banner error" role="alert">
+            <span>⚠️</span>
+            <span>{serverError}</span>
+          </div>
         )}
 
-        {/* Email input */}
-        <label>Email<input type="email" value={form.email} onChange={set("email")} autoComplete="email" /></label>
+        <form onSubmit={handleSubmit} noValidate>
+          {/* Name Field (Register Mode Only) */}
+          {!isLogin && (
+            <div className="form-group">
+              <label htmlFor="auth-name" className="form-label">
+                Full Name
+              </label>
+              <input
+                id="auth-name"
+                type="text"
+                className={`form-input ${errors.name ? "is-invalid" : ""}`}
+                value={form.name}
+                onChange={handleChange("name")}
+                placeholder="Jane Doe"
+                autoComplete="name"
+                disabled={busy}
+                aria-invalid={!!errors.name}
+                aria-describedby={errors.name ? "name-error" : undefined}
+              />
+              {errors.name && (
+                <div id="name-error" className="field-error" role="alert">
+                  {errors.name}
+                </div>
+              )}
+            </div>
+          )}
 
-        {/* Password input */}
-        <label>Password<input type="password" value={form.password} onChange={set("password")}
-          autoComplete={isLogin ? "current-password" : "new-password"} /></label>
+          {/* Email Field */}
+          <div className="form-group">
+            <label htmlFor="auth-email" className="form-label">
+              Work Email Address
+            </label>
+            <input
+              id="auth-email"
+              type="email"
+              className={`form-input ${errors.email ? "is-invalid" : ""}`}
+              value={form.email}
+              onChange={handleChange("email")}
+              placeholder="jane.doe@settribe.com"
+              autoComplete="email"
+              disabled={busy}
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? "email-error" : undefined}
+            />
+            {errors.email && (
+              <div id="email-error" className="field-error" role="alert">
+                {errors.email}
+              </div>
+            )}
+          </div>
 
-        {/* Submit button with loading state */}
-        <button className="primary" disabled={busy}>
-          {busy ? "Please wait..." : isLogin ? "Sign in" : "Create account"}
-        </button>
+          {/* Password Field */}
+          <div className="form-group">
+            <label htmlFor="auth-password" className="form-label">
+              Password
+            </label>
+            <div className="input-password-wrap">
+              <input
+                id="auth-password"
+                type={showPassword ? "text" : "password"}
+                className={`form-input ${errors.password ? "is-invalid" : ""}`}
+                value={form.password}
+                onChange={handleChange("password")}
+                placeholder="••••••••"
+                autoComplete={isLogin ? "current-password" : "new-password"}
+                disabled={busy}
+                aria-invalid={!!errors.password}
+                aria-describedby={errors.password ? "password-error" : undefined}
+              />
+              <button
+                type="button"
+                className="btn-password-toggle"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex="-1"
+              >
+                {showPassword ? "👁️" : "👁️‍🗨️"}
+              </button>
+            </div>
+            {errors.password && (
+              <div id="password-error" className="field-error" role="alert">
+                {errors.password}
+              </div>
+            )}
 
-        {/* Navigation toggle between Login and Register */}
-        <p className="muted center">
-          {isLogin ? <>No account? <Link to="/register">Register</Link></> : <>Already registered? <Link to="/login">Sign in</Link></>}
-        </p>
-      </form>
-    </main>
+            {/* Password Strength Indicator (Register only) */}
+            {!isLogin && form.password && (
+              <div style={{ marginTop: "8px" }}>
+                <div style={{ display: "flex", gap: "4px", height: "4px" }}>
+                  {[1, 2, 3, 4].map((level) => (
+                    <div
+                      key={level}
+                      style={{
+                        flex: 1,
+                        borderRadius: "2px",
+                        backgroundColor:
+                          strength.score >= level ? strength.color : "var(--line-strong)",
+                        transition: "background-color 0.2s ease",
+                      }}
+                    />
+                  ))}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: strength.color, marginTop: "4px", fontWeight: "600" }}>
+                  Strength: {strength.label}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Confirm Password Field (Register Mode Only) */}
+          {!isLogin && (
+            <div className="form-group">
+              <label htmlFor="auth-confirm-password" className="form-label">
+                Confirm Password
+              </label>
+              <div className="input-password-wrap">
+                <input
+                  id="auth-confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  className={`form-input ${errors.confirmPassword ? "is-invalid" : ""}`}
+                  value={form.confirmPassword}
+                  onChange={handleChange("confirmPassword")}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  disabled={busy}
+                  aria-invalid={!!errors.confirmPassword}
+                  aria-describedby={errors.confirmPassword ? "confirm-password-error" : undefined}
+                />
+                <button
+                  type="button"
+                  className="btn-password-toggle"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  tabIndex="-1"
+                >
+                  {showConfirmPassword ? "👁️" : "👁️‍🗨️"}
+                </button>
+              </div>
+              {errors.confirmPassword && (
+                <div id="confirm-password-error" className="field-error" role="alert">
+                  {errors.confirmPassword}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button type="submit" className="btn btn-accent" style={{ width: "100%", marginTop: "12px" }} disabled={busy}>
+            {busy ? (
+              <span>⏳ {isLogin ? "Signing in..." : "Creating account..."}</span>
+            ) : isLogin ? (
+              "Sign In to Dashboard →"
+            ) : (
+              "Complete Registration →"
+            )}
+          </button>
+        </form>
+
+        <footer className="auth-footer-link">
+          {isLogin ? (
+            <p className="muted">
+              Don't have an account? <Link to="/register" style={{ fontWeight: 600 }}>Create account</Link>
+            </p>
+          ) : (
+            <p className="muted">
+              Already registered? <Link to="/login" style={{ fontWeight: 600 }}>Sign in</Link>
+            </p>
+          )}
+        </footer>
+      </div>
+    </div>
   );
 }
-

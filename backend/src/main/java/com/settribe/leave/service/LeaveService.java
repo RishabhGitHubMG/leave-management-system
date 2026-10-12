@@ -56,8 +56,13 @@ public class LeaveService {
      */
     @Transactional
     public LeaveResponse create(String email, LeaveRequestDto dto) {
-        validateDates(dto); // Enforce that toDate is on or after fromDate
+        validateDates(dto); // Enforce that toDate is on or after fromDate and within bounds
         User user = currentUser(email);
+
+        // Prevent overlapping active leave requests for the same employee
+        if (leaveRepo.hasOverlappingLeave(user.getId(), dto.fromDate(), dto.toDate(), null, LeaveStatus.REJECTED)) {
+            throw new ApiException(HttpStatus.CONFLICT, "You already have an active leave request overlapping this date range");
+        }
 
         LeaveRequest leave = LeaveRequest.builder()
                 .user(user)
@@ -81,12 +86,18 @@ public class LeaveService {
         validateDates(dto);
         LeaveRequest leave = findOwnPending(email, id, "edited");
 
+        // Prevent updating into an overlapping date range with another existing request
+        if (leaveRepo.hasOverlappingLeave(leave.getUser().getId(), dto.fromDate(), dto.toDate(), leave.getId(), LeaveStatus.REJECTED)) {
+            throw new ApiException(HttpStatus.CONFLICT, "You already have another active leave request overlapping this date range");
+        }
+
         leave.setLeaveType(dto.leaveType());
         leave.setFromDate(dto.fromDate());
         leave.setToDate(dto.toDate());
         leave.setReason(dto.reason().trim());
         return LeaveResponse.from(leaveRepo.save(leave));
     }
+
 
     /**
      * Deletes / cancels an existing pending leave request.
@@ -164,12 +175,22 @@ public class LeaveService {
     }
 
     /**
-     * Enforces logical date ordering: end date cannot precede start date.
+     * Enforces logical date ordering and reasonable enterprise bounds.
      */
     private void validateDates(LeaveRequestDto dto) {
         if (dto.toDate().isBefore(dto.fromDate())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "To date must not be before from date");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "End date cannot be earlier than start date");
+        }
+        if (dto.fromDate().isBefore(java.time.LocalDate.now().minusDays(30))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Leave start date cannot be older than 30 days in the past");
+        }
+        if (dto.fromDate().isAfter(java.time.LocalDate.now().plusYears(1))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Leave start date cannot be more than 1 year in advance");
+        }
+        if (java.time.temporal.ChronoUnit.DAYS.between(dto.fromDate(), dto.toDate()) > 60) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "A single leave application cannot exceed 60 consecutive days");
         }
     }
 }
+
 

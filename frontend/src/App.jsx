@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
+import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 
@@ -29,16 +30,18 @@ function GuestOnly({ children }) {
 export default function App() {
   return (
     <Routes>
-      {/* Public / Guest-only auth routes */}
+      {/* Public Landing Page */}
+      <Route path="/" element={<LandingPage />} />
+
+      {/* Guest-only Auth routes */}
       <Route path="/login" element={<GuestOnly><AuthPage mode="login" /></GuestOnly>} />
       <Route path="/register" element={<GuestOnly><AuthPage mode="register" /></GuestOnly>} />
 
-      {/* Authenticated dashboard route */}
+      {/* Authenticated Dashboard route */}
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
 
-      {/* Catch-all fallback route: redirects unknown paths to /dashboard */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Catch-all fallback route */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
-

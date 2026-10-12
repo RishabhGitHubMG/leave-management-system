@@ -46,6 +46,14 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
      * Uses JOIN FETCH l.user to eagerly load the associated User entity in a single SQL query,
      * completely eliminating the Hibernate N+1 query performance bottleneck.
      */
+    /**
+     * Admin View:
+     * Retrieves all employee leave requests with optional status and type filters.
+     * 
+     * Performance Optimization:
+     * Uses JOIN FETCH l.user to eagerly load the associated User entity in a single SQL query,
+     * completely eliminating the Hibernate N+1 query performance bottleneck.
+     */
     @Query("""
             SELECT l FROM LeaveRequest l JOIN FETCH l.user
             WHERE (:status IS NULL OR l.status = :status)
@@ -54,5 +62,23 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
             """)
     List<LeaveRequest> findAllFiltered(@Param("status") LeaveStatus status,
                                        @Param("type") LeaveType type);
+
+    /**
+     * Checks if a user already has an active (non-rejected) leave request that overlaps
+     * with the specified [fromDate, toDate] date interval, optionally excluding an existing leave ID (for edit operations).
+     */
+    @Query("""
+            SELECT COUNT(l) > 0 FROM LeaveRequest l
+            WHERE l.user.id = :userId
+              AND l.status != :rejectedStatus
+              AND (:excludeId IS NULL OR l.id != :excludeId)
+              AND (l.fromDate <= :toDate AND l.toDate >= :fromDate)
+            """)
+    boolean hasOverlappingLeave(@Param("userId") Long userId,
+                                @Param("fromDate") java.time.LocalDate fromDate,
+                                @Param("toDate") java.time.LocalDate toDate,
+                                @Param("excludeId") Long excludeId,
+                                @Param("rejectedStatus") LeaveStatus rejectedStatus);
 }
+
 

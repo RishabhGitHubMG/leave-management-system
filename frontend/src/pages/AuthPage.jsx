@@ -61,13 +61,55 @@ export default function AuthPage({ mode }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Field change handler
+  // General field change handler
   const handleChange = (field) => (e) => {
     const val = e.target.value;
     setForm((prev) => ({ ...prev, [field]: val }));
     // Clear field-specific error as user types
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }));
+    }
+  };
+
+  /**
+   * Dedicated handler for Full Name input:
+   * Restricts user to strings/characters only (no numbers).
+   * If a user types or pastes any number, rejects the digits and immediately alerts them.
+   */
+  const handleNameChange = (e) => {
+    const rawVal = e.target.value;
+
+    // Detect if user typed or pasted digits
+    if (/\d/.test(rawVal)) {
+      // Strip numbers out so only string/characters remain
+      const sanitized = rawVal.replace(/[0-9]/g, "");
+      setForm((prev) => ({ ...prev, name: sanitized }));
+      // Tell the user immediately
+      setErrors((prev) => ({
+        ...prev,
+        name: "Numbers are not allowed in the name field. Please enter letters only.",
+      }));
+      return;
+    }
+
+    // Normal valid input
+    setForm((prev) => ({ ...prev, name: rawVal }));
+    if (errors.name) {
+      setErrors((prev) => ({ ...prev, name: "" }));
+    }
+  };
+
+  /**
+   * KeyDown handler for Full Name:
+   * Intercepts numeric keystrokes (0-9) immediately and informs the user.
+   */
+  const handleNameKeyDown = (e) => {
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      setErrors((prev) => ({
+        ...prev,
+        name: "Numbers are not allowed in the name field. Please enter letters only.",
+      }));
     }
   };
 
@@ -82,8 +124,10 @@ export default function AuthPage({ mode }) {
       const trimmedName = form.name.trim();
       if (!trimmedName) {
         errs.name = "Full name is required.";
+      } else if (/\d/.test(form.name)) {
+        errs.name = "Numbers are not allowed in the name field. Please enter letters only.";
       } else if (!NAME_REGEX.test(trimmedName)) {
-        errs.name = "Name must contain 2-100 letters, spaces, hyphens, or apostrophes.";
+        errs.name = "Name must contain 2-100 letters, spaces, hyphens, or apostrophes (no numbers).";
       }
     }
 
@@ -94,6 +138,7 @@ export default function AuthPage({ mode }) {
     } else if (!EMAIL_REGEX.test(trimmedEmail)) {
       errs.email = "Enter a valid email address with a domain (e.g. name@company.com).";
     }
+
 
     // Validate Password
     if (!form.password) {
@@ -181,13 +226,15 @@ export default function AuthPage({ mode }) {
                 type="text"
                 className={`form-input ${errors.name ? "is-invalid" : ""}`}
                 value={form.name}
-                onChange={handleChange("name")}
-                placeholder="Jane Doe"
+                onChange={handleNameChange}
+                onKeyDown={handleNameKeyDown}
+                placeholder="Jane Doe (letters only)"
                 autoComplete="name"
                 disabled={busy}
                 aria-invalid={!!errors.name}
                 aria-describedby={errors.name ? "name-error" : undefined}
               />
+
               {errors.name && (
                 <div id="name-error" className="field-error" role="alert">
                   {errors.name}

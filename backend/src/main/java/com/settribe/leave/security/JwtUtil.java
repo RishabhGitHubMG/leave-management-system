@@ -11,12 +11,19 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+/**
+ * Utility class for generating, parsing, and validating JSON Web Tokens (JWT) using JJWT 0.12+.
+ */
 @Component
 public class JwtUtil {
 
     private final SecretKey key;
     private final long expirationMs;
 
+    /**
+     * Initializes the HMAC-SHA signing key from the application configuration.
+     * Enforces a minimum 256-bit (32 character) secret requirement for cryptographic security.
+     */
     public JwtUtil(@Value("${app.jwt.secret}") String secret,
                    @Value("${app.jwt.expiration-ms}") long expirationMs) {
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
@@ -27,6 +34,14 @@ public class JwtUtil {
         this.expirationMs = expirationMs;
     }
 
+    /**
+     * Generates a digitally signed JWT token containing the user's email as the subject,
+     * the role as a custom claim, issue timestamp, and expiration time.
+     * 
+     * @param email User email (token subject).
+     * @param role  User role (EMPLOYEE or ADMIN).
+     * @return Compact serialized JWT string.
+     */
     public String generateToken(String email, Role role) {
         Date now = new Date();
         return Jwts.builder()
@@ -38,11 +53,23 @@ public class JwtUtil {
                 .compact();
     }
 
+    /**
+     * Extracts and returns the user email (subject) from a signed JWT token.
+     * 
+     * @param token Compact JWT string.
+     * @return Email address stored in the subject claim.
+     */
     public String extractEmail(String token) {
         return Jwts.parser().verifyWith(key).build()
                 .parseSignedClaims(token).getPayload().getSubject();
     }
 
+    /**
+     * Validates that the token's cryptographic signature matches and that it has not expired.
+     * 
+     * @param token Compact JWT string.
+     * @return true if token is structurally valid, signed with our key, and not expired; false otherwise.
+     */
     public boolean isValid(String token) {
         try {
             Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
@@ -52,3 +79,4 @@ public class JwtUtil {
         }
     }
 }
+

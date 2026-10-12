@@ -7,6 +7,12 @@ import com.settribe.leave.entity.LeaveType;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+/**
+ * Data Transfer Object (DTO) representing a leave request returned to frontend clients.
+ * 
+ * Flattens the nested User entity into convenient fields (userId, userName, userEmail)
+ * for straightforward display on employee and admin dashboards.
+ */
 public record LeaveResponse(
         Long id,
         Long userId,
@@ -19,6 +25,9 @@ public record LeaveResponse(
         LeaveStatus status,
         LocalDateTime createdAt
 ) {
+    /**
+     * Static factory method converting a JPA LeaveRequest entity into an immutable LeaveResponse DTO.
+     */
     public static LeaveResponse from(LeaveRequest l) {
         return new LeaveResponse(
                 l.getId(),
@@ -33,3 +42,4 @@ public record LeaveResponse(
                 l.getCreatedAt());
     }
 }
+

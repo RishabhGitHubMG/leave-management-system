@@ -1,5 +1,11 @@
 import axios from "axios";
 
+/**
+ * Determine the backend API base URL:
+ * - If running on Render (*.onrender.com), routes to the live deployed Render backend API.
+ * - Otherwise defaults to local backend at http://localhost:8080/api.
+ * - Can be overridden explicitly by the VITE_API_URL environment variable.
+ */
 const defaultUrl = typeof window !== "undefined" && window.location.hostname.includes("onrender.com")
   ? "https://leave-management-system-1-9uph.onrender.com/api"
   : "http://localhost:8080/api";
@@ -8,14 +14,22 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || defaultUrl,
 });
 
-// Attach the JWT to every request
+/**
+ * Request Interceptor:
+ * Automatically extracts the stored JWT token from localStorage and attaches it
+ * to the HTTP Authorization header as a 'Bearer <token>' on every outgoing API call.
+ */
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Expired or invalid token on a protected call: clear the session and go to login
+/**
+ * Response Interceptor:
+ * Detects 401 Unauthorized responses on protected endpoints (e.g. expired or invalid tokens).
+ * Automatically clears client session from localStorage and redirects user to /login.
+ */
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -29,6 +43,12 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Helper function to extract a user-friendly error message from an API failure:
+ * - Network failures / backend offline.
+ * - Field-level validation error maps from GlobalExceptionHandler.
+ * - General backend error message string.
+ */
 export function errMsg(e) {
   if (!e.response) return "Can't reach the server. Check that the backend is running.";
   const d = e.response.data;
@@ -37,3 +57,4 @@ export function errMsg(e) {
 }
 
 export default api;
+

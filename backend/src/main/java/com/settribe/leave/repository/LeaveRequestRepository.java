@@ -10,12 +10,23 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Spring Data JPA Repository for LeaveRequest database operations.
+ */
 public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long> {
 
-    // Ownership check: returns empty if the request belongs to someone else
+    /**
+     * Ownership Check:
+     * Retrieves a leave request only if it belongs to the given user ID.
+     * Returns Optional.empty() if the request belongs to a different user, preventing unauthorized access.
+     */
     Optional<LeaveRequest> findByIdAndUserId(Long id, Long userId);
 
-    // Employee view: own requests, optional filters (null = no filter)
+    /**
+     * Employee View:
+     * Retrieves all leave requests for a specific user, sorted newest first.
+     * Supports dynamic filtering: passing null for status or type ignores that filter.
+     */
     @Query("""
             SELECT l FROM LeaveRequest l
             WHERE l.user.id = :userId
@@ -27,7 +38,14 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
                                    @Param("status") LeaveStatus status,
                                    @Param("type") LeaveType type);
 
-    // Admin view: everyone's requests, optional filters; JOIN FETCH avoids lazy-load errors
+    /**
+     * Admin View:
+     * Retrieves all employee leave requests with optional status and type filters.
+     * 
+     * Performance Optimization:
+     * Uses JOIN FETCH l.user to eagerly load the associated User entity in a single SQL query,
+     * completely eliminating the Hibernate N+1 query performance bottleneck.
+     */
     @Query("""
             SELECT l FROM LeaveRequest l JOIN FETCH l.user
             WHERE (:status IS NULL OR l.status = :status)
@@ -37,3 +55,4 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     List<LeaveRequest> findAllFiltered(@Param("status") LeaveStatus status,
                                        @Param("type") LeaveType type);
 }
+

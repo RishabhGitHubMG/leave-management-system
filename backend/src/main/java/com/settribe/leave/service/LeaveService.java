@@ -17,6 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/**
+ * Service encapsulating core business rules and workflow for leave applications.
+ * 
+ * Features:
+ * - Employee operations: Create, read, edit, and cancel personal leave requests.
+ * - Admin operations: View all company requests, approve or reject requests.
+ * - Security protections: Ownership validation, ID enumeration defense, state validation.
+ */
 @Service
 @RequiredArgsConstructor
 public class LeaveService {
@@ -24,8 +32,14 @@ public class LeaveService {
     private final LeaveRequestRepository leaveRepo;
     private final UserRepository userRepo;
 
-    // ---------- Employee ----------
+    // =========================================================================
+    // Employee Workflow Methods
+    // =========================================================================
 
+    /**
+     * Lists all leave requests belonging to the currently authenticated employee.
+     * Supports optional filtering by leave status or type.
+     */
     @Transactional(readOnly = true)
     public List<LeaveResponse> listMine(String email, LeaveStatus status, LeaveType type) {
         User user = currentUser(email);
@@ -33,9 +47,16 @@ public class LeaveService {
                 .stream().map(LeaveResponse::from).toList();
     }
 
+    /**
+     * Creates a new leave request in PENDING status.
+     * 
+     * @param email Email of the requesting user extracted from JWT token.
+     * @param dto   Validated leave parameters.
+     * @return Saved LeaveResponse.
+     */
     @Transactional
     public LeaveResponse create(String email, LeaveRequestDto dto) {
-        validateDates(dto);
+        validateDates(dto); // Enforce that toDate is on or after fromDate
         User user = currentUser(email);
 
         LeaveRequest leave = LeaveRequest.builder()
@@ -44,11 +65,17 @@ public class LeaveService {
                 .fromDate(dto.fromDate())
                 .toDate(dto.toDate())
                 .reason(dto.reason().trim())
-                .status(LeaveStatus.PENDING)
+                .status(LeaveStatus.PENDING) // New applications always start as PENDING
                 .build();
         return LeaveResponse.from(leaveRepo.save(leave));
     }
 
+    /**
+     * Updates an existing leave request.
+     * 
+     * Note: Employees can only edit requests that are still in PENDING status.
+     * If the request is already APPROVED or REJECTED, an exception is thrown.
+     */
     @Transactional
     public LeaveResponse update(String email, Long id, LeaveRequestDto dto) {
         validateDates(dto);
@@ -61,20 +88,38 @@ public class LeaveService {
         return LeaveResponse.from(leaveRepo.save(leave));
     }
 
+    /**
+     * Deletes / cancels an existing pending leave request.
+     * 
+     * Note: Once a request is APPROVED or REJECTED, it cannot be deleted by the employee.
+     */
     @Transactional
     public void delete(String email, Long id) {
         LeaveRequest leave = findOwnPending(email, id, "cancelled");
         leaveRepo.delete(leave);
     }
 
-    // ---------- Admin ----------
+    // =========================================================================
+    // Admin Workflow Methods
+    // =========================================================================
 
+    /**
+     * Lists all employee leave requests across the entire system.
+     * (Eagerly loads User entities via JOIN FETCH in the repository to prevent N+1 queries).
+     */
     @Transactional(readOnly = true)
     public List<LeaveResponse> listAll(LeaveStatus status, LeaveType type) {
         return leaveRepo.findAllFiltered(status, type)
                 .stream().map(LeaveResponse::from).toList();
     }
 
+    /**
+     * Updates the status of a pending request to APPROVED or REJECTED.
+     * 
+     * Validation Rules:
+     * - Target status must be APPROVED or REJECTED (cannot revert to PENDING).
+     * - Only requests currently in PENDING state can be updated.
+     */
     @Transactional
     public LeaveResponse updateStatus(Long id, StatusUpdateRequest request) {
         if (request.status() == LeaveStatus.PENDING) {
@@ -89,14 +134,25 @@ public class LeaveService {
         return LeaveResponse.from(leaveRepo.save(leave));
     }
 
-    // ---------- Helpers ----------
+    // =========================================================================
+    // Helper & Validation Methods
+    // =========================================================================
 
+    /**
+     * Finds the user entity corresponding to the provided email from the security token.
+     */
     private User currentUser(String email) {
         return userRepo.findByEmail(email)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
     }
 
-    // Someone else's request looks identical to a missing one (404), so IDs can't be probed.
+    /**
+     * Finds a leave request owned by the current user that is currently PENDING.
+     * 
+     * ID Enumeration Defense:
+     * If a request belongs to someone else, this method returns 404 NOT_FOUND instead of 403 FORBIDDEN.
+     * This prevents attackers from guessing valid leave request IDs of other users.
+     */
     private LeaveRequest findOwnPending(String email, Long id, String action) {
         User user = currentUser(email);
         LeaveRequest leave = leaveRepo.findByIdAndUserId(id, user.getId())
@@ -107,9 +163,13 @@ public class LeaveService {
         return leave;
     }
 
+    /**
+     * Enforces logical date ordering: end date cannot precede start date.
+     */
     private void validateDates(LeaveRequestDto dto) {
         if (dto.toDate().isBefore(dto.fromDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "To date must not be before from date");
         }
     }
 }
+

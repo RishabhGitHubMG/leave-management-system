@@ -136,12 +136,29 @@ public class LeaveService {
         if (request.status() == LeaveStatus.PENDING) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Status must be APPROVED or REJECTED");
         }
+
+        // Enforce mandatory rejection reason: admin must explain why a request is denied
+        if (request.status() == LeaveStatus.REJECTED) {
+            String remarks = request.adminRemarks();
+            if (remarks == null || remarks.trim().length() < 5) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "A rejection reason is required and must be at least 5 characters");
+            }
+        }
+
         LeaveRequest leave = leaveRepo.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
         if (leave.getStatus() != LeaveStatus.PENDING) {
             throw new ApiException(HttpStatus.CONFLICT, "Only pending requests can be approved or rejected");
         }
+
         leave.setStatus(request.status());
+
+        // Persist admin remarks (trimmed) for both REJECTED (mandatory) and APPROVED (optional)
+        if (request.adminRemarks() != null && !request.adminRemarks().isBlank()) {
+            leave.setAdminRemarks(request.adminRemarks().trim());
+        }
+
         return LeaveResponse.from(leaveRepo.save(leave));
     }
 

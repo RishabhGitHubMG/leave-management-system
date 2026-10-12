@@ -11,9 +11,10 @@ import java.time.LocalDateTime;
 
 /**
  * JPA Entity mapping the 'leave_requests' database table.
- * 
+ *
  * Represents an individual employee leave application, tracking dates, reason,
- * leave category, approval status, and the applicant User.
+ * leave category, approval status, the applicant User, and any admin remarks
+ * provided when rejecting or approving the request.
  */
 @Entity
 @Table(name = "leave_requests")
@@ -77,6 +78,14 @@ public class LeaveRequest {
     private LeaveStatus status = LeaveStatus.PENDING;
 
     /**
+     * Remarks provided by the administrator when reviewing the leave request.
+     * MANDATORY when the admin sets status to REJECTED — must contain at least 5 characters.
+     * Optional for APPROVED requests (can be used to communicate notes to the employee).
+     */
+    @Column(name = "admin_remarks", length = 500)
+    private String adminRemarks;
+
+    /**
      * Timestamp when the leave request was submitted.
      * Automatically populated by Hibernate.
      */
@@ -84,4 +93,3 @@ public class LeaveRequest {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 }
-

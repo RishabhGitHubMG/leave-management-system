@@ -11,8 +11,10 @@ import org.springframework.stereotype.Component;
 /**
  * Startup bootstrapper that automatically seeds a default ADMIN user into the database
  * if one does not already exist.
- * 
+ *
  * Implements CommandLineRunner, which runs immediately after the Spring application context starts.
+ * The seeded admin account includes full profile metadata to be consistent with the
+ * extended User schema introduced in version 2.0.
  */
 @Component
 @RequiredArgsConstructor
@@ -32,10 +34,13 @@ public class AdminInitializer implements CommandLineRunner {
                     .email(adminEmail)
                     .password(passwordEncoder.encode("Passw0rd!")) // Password hashed with BCrypt
                     .role(Role.ADMIN)                              // Elevated role: ADMIN
+                    .department("Executive Management")
+                    .designation("System Administrator")
+                    .phoneNumber("+1-000-000-0000")
+                    .employeeId("SET-0001")
                     .build();
             userRepository.save(admin);
             System.out.println(">>> Created default Admin user: admin@test.com / Passw0rd!");
         }
     }
 }
-

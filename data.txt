@@ -1,0 +1,21 @@
+amit@test.com / Passw0rd!
+rishabh@test.com
+
+
+🔑 Default Admin Credentials:
+📧 Email: admin@test.com
+🔒 Password: Passw0rd!
+
+https://dashboard.render.com/
+
+
+cd backend
+export DB_USER=leaveapp
+export DB_PASSWORD='Root@123'
+export JWT_SECRET=$(openssl rand -base64 32)   # must be at least 32 characters
+./mvnw spring-boot:run
+
+
+cd frontend
+npm install
+npm run dev

@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 /**
  * Service managing user authentication, registration, and JWT token issuance.
  */
@@ -27,13 +29,14 @@ public class AuthService {
 
     /**
      * Registers a new user with EMPLOYEE role.
-     * 
+     *
      * Security Highlights:
      * - Email is normalized (trimmed and converted to lowercase).
      * - Prevents duplicate registrations by checking existsByEmail.
      * - Password is encrypted with BCrypt before persistence.
      * - The role is explicitly hardcoded to Role.EMPLOYEE to prevent privilege escalation.
-     * 
+     * - Employee ID is auto-generated in "SET-XXXX" format if not provided by the user.
+     *
      * @param request Validated RegisterRequest payload.
      * @return AuthResponse containing newly issued JWT token and user profile.
      */
@@ -46,12 +49,21 @@ public class AuthService {
             throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
         }
 
-        // Build and persist the new User entity
+        // Auto-generate employeeId in "SET-XXXX" format if user did not provide one
+        String employeeId = (request.employeeId() != null && !request.employeeId().isBlank())
+                ? request.employeeId().trim()
+                : "SET-" + String.format("%04d", ThreadLocalRandom.current().nextInt(1000, 9999));
+
+        // Build and persist the new User entity with extended profile fields
         User user = User.builder()
                 .name(request.name().trim())
                 .email(email)
                 .password(passwordEncoder.encode(request.password())) // BCrypt hashing
                 .role(Role.EMPLOYEE)   // Default role: never taken from request to prevent self-assigned ADMIN
+                .department(request.department() != null ? request.department().trim() : null)
+                .designation(request.designation() != null ? request.designation().trim() : null)
+                .phoneNumber(request.phoneNumber() != null ? request.phoneNumber().trim() : null)
+                .employeeId(employeeId)
                 .build();
         user = userRepository.save(user);
 
@@ -60,7 +72,7 @@ public class AuthService {
 
     /**
      * Authenticates an existing user and issues a fresh JWT token.
-     * 
+     *
      * @param request Validated LoginRequest payload.
      * @return AuthResponse with JWT token and user details upon successful login.
      * @throws ApiException with 401 UNAUTHORIZED if email or password do not match.
@@ -79,10 +91,20 @@ public class AuthService {
 
     /**
      * Converts a persisted User entity into an AuthResponse with a signed JWT token.
+     * Includes all profile fields for the frontend to display in the dashboard header.
      */
     private AuthResponse toResponse(User user) {
         String token = jwtUtil.generateToken(user.getEmail(), user.getRole());
-        return new AuthResponse(token, user.getId(), user.getName(), user.getEmail(), user.getRole());
+        return new AuthResponse(
+                token,
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getRole(),
+                user.getDepartment(),
+                user.getDesignation(),
+                user.getPhoneNumber(),
+                user.getEmployeeId()
+        );
     }
 }
-

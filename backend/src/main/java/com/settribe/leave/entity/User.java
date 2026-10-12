@@ -10,8 +10,9 @@ import java.time.LocalDateTime;
 
 /**
  * JPA Entity mapping the 'users' database table.
- * 
- * Stores user profiles, credentials (BCrypt hashed), and roles (EMPLOYEE or ADMIN).
+ *
+ * Stores user profiles, credentials (BCrypt hashed), roles (EMPLOYEE or ADMIN),
+ * and extended professional profile information collected at registration.
  */
 @Entity
 @Table(name = "users")
@@ -59,6 +60,34 @@ public class User {
     private Role role = Role.EMPLOYEE;
 
     /**
+     * Department the user belongs to (e.g., Engineering & Tech, Human Resources).
+     * Optional — may be null for legacy or admin accounts.
+     */
+    @Column(length = 100)
+    private String department;
+
+    /**
+     * Job title or designation of the employee (e.g., Senior Developer, Team Lead).
+     * Optional — may be null for legacy or admin accounts.
+     */
+    @Column(length = 100)
+    private String designation;
+
+    /**
+     * Contact phone number for the employee.
+     * Optional — stored as a string to support international formats.
+     */
+    @Column(name = "phone_number", length = 25)
+    private String phoneNumber;
+
+    /**
+     * Unique internal employee identifier assigned at registration.
+     * Auto-generated in format "SET-XXXX" if not provided by the user.
+     */
+    @Column(name = "employee_id", length = 50)
+    private String employeeId;
+
+    /**
      * Timestamp when the user account was created.
      * Automatically populated by Hibernate upon insertion and never updated.
      */
@@ -66,4 +95,3 @@ public class User {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 }
-

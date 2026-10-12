@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import SettribeLogo from "../components/SettribeLogo";
@@ -7,6 +7,21 @@ import SettribeLogo from "../components/SettribeLogo";
 // Regex validations
 const NAME_REGEX = /^[a-zA-Z\u00C0-\u017F\s'-]{2,100}$/;
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const PHONE_REGEX = /^[+\d\s()\-]{7,25}$/;
+
+/** Department options available for employee registration */
+const DEPARTMENTS = [
+  "Engineering & Technology",
+  "Product & Design",
+  "Human Resources",
+  "Marketing",
+  "Sales",
+  "Operations",
+  "Finance & Accounting",
+  "Customer Success",
+  "Legal & Compliance",
+  "Research & Development",
+];
 
 /**
  * Calculates a 4-tier password strength score
@@ -29,11 +44,13 @@ function getPasswordStrength(pwd) {
 
 /**
  * AuthPage Component
- * 
+ *
  * Re-architected dual-mode authentication page for Settribe.
  * Features:
  * - Settribe brand vector header
+ * - Sign-out confirmation banner via router state (appears after logout)
  * - Field-level inline validation (Name, RFC Email, Password, Confirm Password)
+ * - Extended registration form: Department, Designation, Phone Number, Employee ID
  * - Password strength visual indicator
  * - Accessible eye-toggle for password visibility
  * - Explicit keyboard focus & ARIA error relationships
@@ -42,6 +59,10 @@ export default function AuthPage({ mode }) {
   const isLogin = mode === "login";
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Read logout notice from router state (set when user clicks "Sign out")
+  const logoutNotice = location.state?.notice || null;
 
   // Controlled form state
   const [form, setForm] = useState({
@@ -49,6 +70,10 @@ export default function AuthPage({ mode }) {
     email: "",
     password: "",
     confirmPassword: "",
+    department: "",
+    designation: "",
+    phoneNumber: "",
+    employeeId: "",
   });
 
   // Field-specific validation errors
@@ -139,7 +164,6 @@ export default function AuthPage({ mode }) {
       errs.email = "Enter a valid email address with a domain (e.g. name@company.com).";
     }
 
-
     // Validate Password
     if (!form.password) {
       errs.password = "Password is required.";
@@ -154,6 +178,11 @@ export default function AuthPage({ mode }) {
       } else if (form.confirmPassword !== form.password) {
         errs.confirmPassword = "Passwords do not match.";
       }
+    }
+
+    // Validate Phone Number (Registration only, if provided)
+    if (!isLogin && form.phoneNumber.trim() && !PHONE_REGEX.test(form.phoneNumber.trim())) {
+      errs.phoneNumber = "Enter a valid phone number (e.g. +91 98765 43210).";
     }
 
     setErrors(errs);
@@ -174,7 +203,15 @@ export default function AuthPage({ mode }) {
       const endpoint = isLogin ? "/auth/login" : "/auth/register";
       const payload = isLogin
         ? { email: form.email.trim(), password: form.password }
-        : { name: form.name.trim(), email: form.email.trim(), password: form.password };
+        : {
+            name: form.name.trim(),
+            email: form.email.trim(),
+            password: form.password,
+            department: form.department || null,
+            designation: form.designation.trim() || null,
+            phoneNumber: form.phoneNumber.trim() || null,
+            employeeId: form.employeeId.trim() || null,
+          };
 
       const { data } = await api.post(endpoint, payload);
 
@@ -206,6 +243,18 @@ export default function AuthPage({ mode }) {
           </p>
         </header>
 
+        {/* Logout Success Notice Banner — shown after user signs out */}
+        {isLogin && logoutNotice && (
+          <div
+            className="banner ok"
+            role="status"
+            style={{ marginBottom: "16px", animation: "fadeIn 0.4s ease" }}
+          >
+            <span>✅</span>
+            <span>{logoutNotice}</span>
+          </div>
+        )}
+
         {/* Global Server Error Banner */}
         {serverError && (
           <div className="banner error" role="alert">
@@ -219,7 +268,7 @@ export default function AuthPage({ mode }) {
           {!isLogin && (
             <div className="form-group">
               <label htmlFor="auth-name" className="form-label">
-                Full Name
+                Full Name <span style={{ color: "#ef4444" }}>*</span>
               </label>
               <input
                 id="auth-name"
@@ -246,7 +295,7 @@ export default function AuthPage({ mode }) {
           {/* Email Field */}
           <div className="form-group">
             <label htmlFor="auth-email" className="form-label">
-              Work Email Address
+              Work Email Address <span style={{ color: "#ef4444" }}>*</span>
             </label>
             <input
               id="auth-email"
@@ -270,7 +319,7 @@ export default function AuthPage({ mode }) {
           {/* Password Field */}
           <div className="form-group">
             <label htmlFor="auth-password" className="form-label">
-              Password
+              Password <span style={{ color: "#ef4444" }}>*</span>
             </label>
             <div className="input-password-wrap">
               <input
@@ -329,7 +378,7 @@ export default function AuthPage({ mode }) {
           {!isLogin && (
             <div className="form-group">
               <label htmlFor="auth-confirm-password" className="form-label">
-                Confirm Password
+                Confirm Password <span style={{ color: "#ef4444" }}>*</span>
               </label>
               <div className="input-password-wrap">
                 <input
@@ -362,8 +411,117 @@ export default function AuthPage({ mode }) {
             </div>
           )}
 
+          {/* ---- Extended Profile Fields (Register Mode Only) ---- */}
+          {!isLogin && (
+            <>
+              <div
+                style={{
+                  margin: "20px 0 12px",
+                  padding: "10px 14px",
+                  background: "var(--surface-raised)",
+                  borderRadius: "8px",
+                  borderLeft: "3px solid var(--brand-accent)",
+                }}
+              >
+                <p style={{ margin: 0, fontSize: "0.8125rem", fontWeight: 600, color: "var(--ink-primary)" }}>
+                  Professional Profile (Optional)
+                </p>
+                <p style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "var(--ink-muted)" }}>
+                  Help your manager identify you and track leave by department.
+                </p>
+              </div>
+
+              {/* Department Selector */}
+              <div className="form-group">
+                <label htmlFor="auth-department" className="form-label">
+                  Department
+                </label>
+                <select
+                  id="auth-department"
+                  className="form-select"
+                  value={form.department}
+                  onChange={handleChange("department")}
+                  disabled={busy}
+                  style={{ width: "100%" }}
+                >
+                  <option value="">Select your department...</option>
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Designation / Job Title */}
+              <div className="form-group">
+                <label htmlFor="auth-designation" className="form-label">
+                  Job Title / Designation
+                </label>
+                <input
+                  id="auth-designation"
+                  type="text"
+                  className="form-input"
+                  value={form.designation}
+                  onChange={handleChange("designation")}
+                  placeholder="e.g. Senior Developer, Team Lead"
+                  autoComplete="organization-title"
+                  disabled={busy}
+                  maxLength={100}
+                />
+              </div>
+
+              {/* Two-column row for Phone & Employee ID */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                {/* Phone Number */}
+                <div className="form-group">
+                  <label htmlFor="auth-phone" className="form-label">
+                    Phone Number
+                  </label>
+                  <input
+                    id="auth-phone"
+                    type="tel"
+                    className={`form-input ${errors.phoneNumber ? "is-invalid" : ""}`}
+                    value={form.phoneNumber}
+                    onChange={handleChange("phoneNumber")}
+                    placeholder="+91 98765 43210"
+                    autoComplete="tel"
+                    disabled={busy}
+                    aria-invalid={!!errors.phoneNumber}
+                    aria-describedby={errors.phoneNumber ? "phone-error" : undefined}
+                  />
+                  {errors.phoneNumber && (
+                    <div id="phone-error" className="field-error" role="alert">
+                      {errors.phoneNumber}
+                    </div>
+                  )}
+                </div>
+
+                {/* Employee ID */}
+                <div className="form-group">
+                  <label htmlFor="auth-employee-id" className="form-label">
+                    Employee ID
+                  </label>
+                  <input
+                    id="auth-employee-id"
+                    type="text"
+                    className="form-input"
+                    value={form.employeeId}
+                    onChange={handleChange("employeeId")}
+                    placeholder="Auto-assigned if blank"
+                    disabled={busy}
+                    maxLength={50}
+                  />
+                  <div style={{ fontSize: "0.7rem", color: "var(--ink-muted)", marginTop: "4px" }}>
+                    Assigned as SET-XXXX if left empty
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Submit Button */}
-          <button type="submit" className="btn btn-accent" style={{ width: "100%", marginTop: "12px" }} disabled={busy}>
+          <button type="submit" className="btn btn-accent" style={{ width: "100%", marginTop: "16px" }} disabled={busy}>
             {busy ? (
               <span>⏳ {isLogin ? "Signing in..." : "Creating account..."}</span>
             ) : isLogin ? (

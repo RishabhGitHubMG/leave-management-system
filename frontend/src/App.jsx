@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import LandingPage from "./pages/LandingPage";
@@ -28,6 +29,13 @@ function GuestOnly({ children }) {
  * Main application component configuring client-side routing.
  */
 export default function App() {
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-theme",
+      localStorage.getItem("theme") === "dark" ? "dark" : "light"
+    );
+  }, []);
+
   return (
     <Routes>
       {/* Public Landing Page */}

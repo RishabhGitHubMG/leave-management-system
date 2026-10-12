@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { CalendarDays, X } from "lucide-react";
 
 /**
  * Supported leave categories.
@@ -46,12 +47,11 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
   const modalRef = useRef(null);
   const firstInputRef = useRef(null);
 
-  // Focus trap / auto-focus on first input upon open
   useEffect(() => {
-    if (firstInputRef.current) {
-      firstInputRef.current.focus();
-    }
+    firstInputRef.current?.focus();
+  }, []);
 
+  useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -127,7 +127,7 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
             onClick={onCancel}
             aria-label="Close dialog"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 
@@ -155,7 +155,7 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
             </div>
 
             {/* Date Pickers */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+            <div className="form-row-2">
               <div className="form-group">
                 <label htmlFor="from-date-input" className="form-label">
                   From Date
@@ -204,7 +204,7 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
             {daysCount > 0 && (
               <div style={{ marginBottom: "16px" }}>
                 <span className="chip" style={{ background: "var(--brand-gradient-subtle)", color: "var(--brand-navy-light)" }}>
-                  📅 Total Duration: <strong>{daysCount} {daysCount === 1 ? "Day" : "Days"}</strong>
+                  <CalendarDays size={13} /> Total Duration: <strong>{daysCount} {daysCount === 1 ? "Day" : "Days"}</strong>
                 </span>
               </div>
             )}

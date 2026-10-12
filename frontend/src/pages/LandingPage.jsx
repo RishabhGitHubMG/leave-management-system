@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Menu, X } from "lucide-react";
 import { useAuth } from "../auth";
 import SettribeLogo from "../components/SettribeLogo";
 
@@ -32,7 +33,7 @@ export default function LandingPage() {
           </Link>
 
           {/* Desktop Navigation Links */}
-          <ul className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`}>
+          <ul id="landing-nav-links" className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`}>
             <li>
               <a href="#features" className="nav-link" onClick={() => setMobileMenuOpen(false)}>
                 Features
@@ -53,6 +54,33 @@ export default function LandingPage() {
                 Security
               </a>
             </li>
+            {user ? (
+              <>
+                <li className="nav-mobile-only">
+                  <Link to="/dashboard" className="nav-link" onClick={() => setMobileMenuOpen(false)}>
+                    Go to Dashboard
+                  </Link>
+                </li>
+                <li className="nav-mobile-only">
+                  <button className="nav-link" onClick={() => logout(navigate)}>
+                    Sign out
+                  </button>
+                </li>
+              </>
+            ) : (
+              <>
+                <li className="nav-mobile-only">
+                  <Link to="/login" className="nav-link" onClick={() => setMobileMenuOpen(false)}>
+                    Sign In
+                  </Link>
+                </li>
+                <li className="nav-mobile-only">
+                  <Link to="/register" className="nav-link" onClick={() => setMobileMenuOpen(false)}>
+                    Get Started
+                  </Link>
+                </li>
+              </>
+            )}
           </ul>
 
           {/* Nav Actions / User Session */}
@@ -62,7 +90,7 @@ export default function LandingPage() {
                 <Link to="/dashboard" className="btn btn-primary btn-sm">
                   Go to Dashboard
                 </Link>
-                <button onClick={logout} className="btn btn-ghost btn-sm" aria-label="Sign out">
+                <button onClick={() => logout(navigate)} className="btn btn-ghost btn-sm" aria-label="Sign out">
                   Sign out
                 </button>
               </>
@@ -83,8 +111,9 @@ export default function LandingPage() {
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Toggle navigation menu"
               aria-expanded={mobileMenuOpen}
+              aria-controls="landing-nav-links"
             >
-              {mobileMenuOpen ? "✕" : "☰"}
+              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
           </div>
         </div>

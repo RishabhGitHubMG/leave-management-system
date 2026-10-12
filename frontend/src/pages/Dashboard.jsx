@@ -4,7 +4,7 @@ import {
   Search, X, CalendarDays, Clock, CheckCircle2, XCircle,
   Filter, ChevronDown, AlertTriangle, Info, RefreshCw,
   Pencil, Trash2, ThumbsUp, ThumbsDown, Download, CalendarPlus,
-  SlidersHorizontal, ArrowUpDown,
+  SlidersHorizontal, ArrowUpDown, User, Building2, BadgeCheck, ClipboardList,
 } from "lucide-react";
 
 import api, { errMsg } from "../api";
@@ -161,7 +161,7 @@ function RejectModal({ open, item, busy, onConfirm, onCancel }) {
             <XCircle size={20} color="#dc2626" />
             <h2 id="reject-modal-title">Reject Leave Request</h2>
           </div>
-          <button className="modal-close-btn" onClick={onCancel} aria-label="Close">✕</button>
+          <button className="modal-close-btn" onClick={onCancel} aria-label="Close"><X size={16} /></button>
         </div>
 
         <div className="modal-body">
@@ -252,9 +252,9 @@ function FilterPills({ label: groupLabel, options, value, onChange }) {
    ────────────────────────────────────────────────────────────────────────── */
 
 const STATUS_OPTIONS = [
-  { value: "PENDING",  label: "⏳ Pending"  },
-  { value: "APPROVED", label: "✅ Approved" },
-  { value: "REJECTED", label: "❌ Rejected" },
+  { value: "PENDING",  label: "Pending"  },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
 ];
 
 const TYPE_OPTIONS = TYPES.map((t) => ({ value: t, label: `${label(t)} Leave` }));
@@ -267,16 +267,6 @@ const SORT_OPTIONS = [
 
 /**
  * Dashboard — Primary view for both employees and admins.
- *
- * Features:
- * ✅ Avatar dropdown with profile metadata, dark mode toggle, sign-out
- * ✅ KPI cards with Lucide icons (CalendarDays, Clock, CheckCircle2, XCircle)
- * ✅ Leave Balance widget with animated progress bars
- * ✅ Smart search with clear button + pill filters
- * ✅ Leave cards with formatted dates, admin remarks callout, re-apply action
- * ✅ Admin rejection modal with mandatory reason input
- * ✅ Contextual action buttons per status
- * ✅ Full dark mode + WCAG AA accessibility
  */
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -362,7 +352,7 @@ export default function Dashboard() {
 
   const handleApprove = (l) =>
     run(() => api.put(`/admin/leaves/${l.id}/status`, { status: "APPROVED" }),
-      `✅ Request approved for ${l.userName}.`);
+      `Request approved for ${l.userName}.`);
 
   const handleRejectConfirm = (remarks) =>
     run(
@@ -492,7 +482,7 @@ export default function Dashboard() {
           {[
             { label: "Total Requests",      value: metrics.total,    Icon: CalendarDays,  color: "#16a34a", bg: "rgba(22,163,74,0.08)",  sub: "All applications" },
             { label: "Pending Review",       value: metrics.pending,  Icon: Clock,         color: "#d97706", bg: "rgba(217,119,6,0.08)",   sub: "Awaiting decision" },
-            { label: "Approved",             value: metrics.approved, Icon: CheckCircle2,  color: "#16a34a", bg: "rgba(22,163,74,0.08)",  sub: "Days granted" },
+            { label: "Approved",             value: metrics.approved, Icon: CheckCircle2,  color: "#16a34a", bg: "rgba(22,163,74,0.08)",  sub: "Requests approved" },
             { label: "Rejected / Cancelled", value: metrics.rejected, Icon: XCircle,       color: "#dc2626", bg: "rgba(220,38,38,0.08)",  sub: "Declined" },
           ].map(({ label: lbl, value, Icon, color, bg, sub }) => (
             <div key={lbl} className="metric-card" aria-label={lbl}>
@@ -579,7 +569,7 @@ export default function Dashboard() {
 
           {/* Filter toggle */}
           <button
-            className={`btn btn-secondary btn-sm ${activeFilterCount > 0 ? "btn-accent" : ""}`}
+            className={`btn btn-sm ${activeFilterCount > 0 ? "btn-accent" : "btn-secondary"}`}
             onClick={() => setShowFilters((p) => !p)}
             aria-expanded={showFilters}
             aria-label="Toggle filters"
@@ -680,7 +670,7 @@ export default function Dashboard() {
         ) : processedItems.length === 0 ? (
           /* Empty state */
           <div className="empty-box">
-            <div className="empty-box-icon">📋</div>
+            <div className="empty-box-icon"><ClipboardList size={48} /></div>
             <h3>No Leave Requests Found</h3>
             <p style={{ marginBottom: 16 }}>
               {searchQuery || statusFilter || typeFilter
@@ -748,15 +738,15 @@ export default function Dashboard() {
                           }}
                         >
                           <span>
-                            👤 <strong>{l.userName}</strong>
+                            <User size={13} /> <strong>{l.userName}</strong>
                             <span style={{ color: "var(--ink-muted)", fontSize: "0.8rem" }}>
                               {" "}({l.userEmail})
                             </span>
                           </span>
                           {(l.userEmployeeId || l.userDepartment || l.userDesignation) && (
                             <span style={{ fontSize: "0.75rem", color: "var(--ink-muted)", display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              {l.userEmployeeId && <span>🪪 {l.userEmployeeId}</span>}
-                              {l.userDepartment && <span>🏢 {l.userDepartment}</span>}
+                              {l.userEmployeeId && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BadgeCheck size={12} />{l.userEmployeeId}</span>}
+                              {l.userDepartment && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Building2 size={12} />{l.userDepartment}</span>}
                               {l.userDesignation && <span>· {l.userDesignation}</span>}
                             </span>
                           )}
@@ -852,9 +842,7 @@ export default function Dashboard() {
                     )}
 
                     {/* Finalized state label */}
-                    {((tab === "mine"  && l.status !== "PENDING") ||
-                      (tab === "all"   && l.status !== "PENDING")) &&
-                      tab !== "mine" && (
+                    {tab === "all" && l.status !== "PENDING" && (
                       <span style={{ fontSize: "0.75rem", color: "var(--ink-muted)", textAlign: "center", paddingTop: 4 }}>
                         Finalized
                       </span>

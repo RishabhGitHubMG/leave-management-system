@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { AlertTriangle, Trash2, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Trash2, CheckCircle2, X } from "lucide-react";
 
 /**
  * ConfirmModal Component
@@ -61,7 +61,7 @@ export default function ConfirmModal({
             onClick={onCancel}
             aria-label="Close dialog"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 

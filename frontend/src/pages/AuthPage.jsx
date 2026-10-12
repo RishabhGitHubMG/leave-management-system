@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import SettribeLogo from "../components/SettribeLogo";
+import { AlertTriangle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 
 // Regex validations
 const NAME_REGEX = /^[a-zA-Z\u00C0-\u017F\s'-]{2,100}$/;
@@ -250,7 +251,7 @@ export default function AuthPage({ mode }) {
             role="status"
             style={{ marginBottom: "16px", animation: "fadeIn 0.4s ease" }}
           >
-            <span>✅</span>
+            <CheckCircle2 size={16} />
             <span>{logoutNotice}</span>
           </div>
         )}
@@ -258,7 +259,7 @@ export default function AuthPage({ mode }) {
         {/* Global Server Error Banner */}
         {serverError && (
           <div className="banner error" role="alert">
-            <span>⚠️</span>
+            <AlertTriangle size={16} />
             <span>{serverError}</span>
           </div>
         )}
@@ -339,9 +340,9 @@ export default function AuthPage({ mode }) {
                 className="btn-password-toggle"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                tabIndex="-1"
+                tabIndex={-1}
               >
-                {showPassword ? "👁️" : "👁️‍🗨️"}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             {errors.password && (
@@ -398,9 +399,9 @@ export default function AuthPage({ mode }) {
                   className="btn-password-toggle"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                  tabIndex="-1"
+                  tabIndex={-1}
                 >
-                  {showConfirmPassword ? "👁️" : "👁️‍🗨️"}
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {errors.confirmPassword && (
@@ -472,7 +473,7 @@ export default function AuthPage({ mode }) {
               </div>
 
               {/* Two-column row for Phone & Employee ID */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div className="form-row-2">
                 {/* Phone Number */}
                 <div className="form-group">
                   <label htmlFor="auth-phone" className="form-label">
@@ -523,7 +524,7 @@ export default function AuthPage({ mode }) {
           {/* Submit Button */}
           <button type="submit" className="btn btn-accent" style={{ width: "100%", marginTop: "16px" }} disabled={busy}>
             {busy ? (
-              <span>⏳ {isLogin ? "Signing in..." : "Creating account..."}</span>
+              <span>{isLogin ? "Signing in..." : "Creating account..."}</span>
             ) : isLogin ? (
               "Sign In to Dashboard →"
             ) : (

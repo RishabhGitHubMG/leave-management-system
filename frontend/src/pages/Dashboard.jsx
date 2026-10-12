@@ -1,175 +1,219 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  Search, X, CalendarDays, Clock, CheckCircle2, XCircle,
+  Filter, ChevronDown, AlertTriangle, Info, RefreshCw,
+  Pencil, Trash2, ThumbsUp, ThumbsDown, Download, CalendarPlus,
+  SlidersHorizontal, ArrowUpDown,
+} from "lucide-react";
+
 import api, { errMsg } from "../api";
 import { useAuth } from "../auth";
 import SettribeLogo from "../components/SettribeLogo";
 import LeaveForm, { TYPES, label } from "../components/LeaveForm";
 import ConfirmModal from "../components/ConfirmModal";
+import AvatarDropdown from "../components/AvatarDropdown";
+import LeaveBalanceWidget from "../components/LeaveBalanceWidget";
 
-const STATUSES = ["PENDING", "APPROVED", "REJECTED"];
+/* ──────────────────────────────────────────────────────────────────────────
+   Utility Helpers
+   ────────────────────────────────────────────────────────────────────────── */
 
-/**
- * Calculates calendar day count between two dates inclusive
- */
-function calculateDays(from, to) {
+/** Format ISO date string → "Oct 12, 2026" */
+function fmtDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/** Calendar day count inclusive */
+function calcDays(from, to) {
   if (!from || !to) return 1;
-  const d1 = new Date(from);
-  const d2 = new Date(to);
-  const diffTime = d2.getTime() - d1.getTime();
-  if (diffTime < 0) return 1;
-  return Math.round(diffTime / (1000 * 3600 * 24)) + 1;
+  const diff = new Date(to) - new Date(from);
+  if (diff < 0) return 1;
+  return Math.round(diff / 86400000) + 1;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Sub-Components
+   ────────────────────────────────────────────────────────────────────────── */
+
 /**
- * Returns icon corresponding to leave category
+ * StatusBadge — semantic colored pill for leave status
  */
-function getLeaveTypeIcon(type) {
-  switch (type) {
-    case "SICK": return "🏥";
-    case "ANNUAL": return "🏖️";
-    case "CASUAL": return "🌴";
-    case "UNPAID": return "📋";
-    default: return "🗓️";
-  }
+function StatusBadge({ status }) {
+  const cfg = {
+    PENDING:  { cls: "badge-pending",  Icon: Clock,         text: "Pending" },
+    APPROVED: { cls: "badge-approved", Icon: CheckCircle2,  text: "Approved" },
+    REJECTED: { cls: "badge-rejected", Icon: XCircle,       text: "Rejected" },
+  }[status] ?? { cls: "", Icon: Info, text: status };
+
+  return (
+    <span className={`badge ${cfg.cls}`}>
+      <cfg.Icon size={11} />
+      {cfg.text}
+    </span>
+  );
 }
 
 /**
- * Returns icon corresponding to status
+ * LeaveTypeChip — pill showing leave category with icon
  */
-function getStatusIcon(status) {
-  switch (status) {
-    case "PENDING": return "⏳";
-    case "APPROVED": return "✅";
-    case "REJECTED": return "❌";
-    default: return "•";
-  }
+function LeaveTypeChip({ type }) {
+  const cfg = {
+    SICK:    { emoji: "🏥", color: "#0891b2" },
+    ANNUAL:  { emoji: "🏖️", color: "#16a34a" },
+    CASUAL:  { emoji: "🌴", color: "#7c3aed" },
+    UNPAID:  { emoji: "📋", color: "#b45309" },
+  }[type] ?? { emoji: "🗓️", color: "#64748b" };
+
+  return (
+    <span className="chip" style={{ color: cfg.color }}>
+      {cfg.emoji} {label(type)} Leave
+    </span>
+  );
 }
 
-// =============================================================================
-// Rejection Reason Modal — Prompts admin for mandatory rejection reason
-// =============================================================================
 /**
- * Modal dialog that captures the admin's rejection reason before submitting.
- * Enforces minimum 5-character reason to match backend validation.
- *
- * @param {{ open: boolean, item: object|null, busy: boolean, onConfirm: (remarks: string) => void, onCancel: () => void }} props
+ * AdminRemarksCallout — styled rejection / approval note from management
+ */
+function AdminRemarksCallout({ status, remarks, onReApply }) {
+  const isRejected = status === "REJECTED";
+  return (
+    <div className={`remarks-callout ${isRejected ? "rejected" : "approved"}`}>
+      <span className="remarks-icon">
+        {isRejected
+          ? <AlertTriangle size={15} />
+          : <CheckCircle2 size={15} />
+        }
+      </span>
+      <div className="remarks-body">
+        <span className="remarks-label">
+          {isRejected ? "Rejection reason from management:" : "Management note:"}
+        </span>
+        <span>{remarks}</span>
+      </div>
+      {isRejected && onReApply && (
+        <button
+          className="btn btn-xs btn-secondary"
+          onClick={onReApply}
+          style={{ flexShrink: 0, alignSelf: "flex-start" }}
+        >
+          Re-apply
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * RejectModal — Admin must provide a reason (≥5 chars) before rejecting
  */
 function RejectModal({ open, item, busy, onConfirm, onCancel }) {
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState("");
+  const textareaRef = useRef(null);
 
-  // Reset form each time modal opens
   useEffect(() => {
     if (open) {
       setRemarks("");
       setError("");
+      setTimeout(() => textareaRef.current?.focus(), 50);
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onCancel]);
+
   if (!open || !item) return null;
 
-  const handleSubmit = () => {
+  const submit = () => {
     const trimmed = remarks.trim();
     if (trimmed.length < 5) {
-      setError("Rejection reason must be at least 5 characters.");
+      setError("Reason must be at least 5 characters.");
       return;
     }
     onConfirm(trimmed);
   };
 
   return (
-    // Backdrop overlay
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: "16px",
-      }}
+      className="modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="reject-modal-title"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
-      <div
-        style={{
-          background: "var(--surface-card)",
-          borderRadius: "16px",
-          padding: "32px",
-          maxWidth: "480px",
-          width: "100%",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-          border: "1px solid var(--line-subtle)",
-        }}
-      >
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: "20px" }}>
-          <span style={{ fontSize: "2rem" }}>❌</span>
-          <div>
-            <h2 id="reject-modal-title" style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700, color: "var(--ink-primary)" }}>
-              Reject Leave Request
-            </h2>
-            <p style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "var(--ink-muted)" }}>
-              Rejecting{" "}
-              <strong>{item.userName}</strong>'s{" "}
-              <strong>{label(item.leaveType)} leave</strong> ({item.fromDate} → {item.toDate})
-            </p>
+      <div className="modal-dialog" style={{ maxWidth: 480 }}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <XCircle size={20} color="#dc2626" />
+            <h2 id="reject-modal-title">Reject Leave Request</h2>
           </div>
+          <button className="modal-close-btn" onClick={onCancel} aria-label="Close">✕</button>
         </div>
 
-        {/* Reason Input */}
-        <div className="form-group">
-          <label htmlFor="reject-reason" className="form-label">
-            Rejection Reason <span style={{ color: "#ef4444" }}>*</span>
-          </label>
-          <textarea
-            id="reject-reason"
-            className={`form-input ${error ? "is-invalid" : ""}`}
-            rows={4}
-            value={remarks}
-            onChange={(e) => {
-              setRemarks(e.target.value);
-              if (error) setError("");
+        <div className="modal-body">
+          {/* Context summary */}
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "var(--bg-surface-muted)",
+              border: "1px solid var(--line-subtle)",
+              fontSize: "0.875rem",
+              color: "var(--ink-secondary)",
+              marginBottom: 16,
             }}
-            placeholder="Explain why this leave request is being rejected (min 5 characters)..."
-            disabled={busy}
-            aria-invalid={!!error}
-            aria-describedby={error ? "reject-reason-error" : undefined}
-            style={{ resize: "vertical", fontFamily: "inherit" }}
-            autoFocus
-            maxLength={500}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
-            {error ? (
-              <div id="reject-reason-error" className="field-error" role="alert">{error}</div>
-            ) : (
-              <div />
-            )}
-            <span style={{ fontSize: "0.75rem", color: "var(--ink-muted)" }}>
-              {remarks.length}/500
-            </span>
+          >
+            Rejecting <strong>{item.userName}</strong>'s{" "}
+            <strong>{label(item.leaveType)} Leave</strong>
+            {" "}({fmtDate(item.fromDate)} → {fmtDate(item.toDate)})
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label htmlFor="reject-reason" className="form-label">
+              Rejection Reason <span style={{ color: "#ef4444" }}>*</span>
+            </label>
+            <textarea
+              id="reject-reason"
+              ref={textareaRef}
+              className={`form-textarea ${error ? "is-invalid" : ""}`}
+              rows={4}
+              value={remarks}
+              onChange={(e) => { setRemarks(e.target.value); if (error) setError(""); }}
+              placeholder="Explain why this request is being rejected (min 5 characters)..."
+              disabled={busy}
+              maxLength={500}
+              aria-invalid={!!error}
+              aria-describedby={error ? "reject-reason-err" : undefined}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+              {error
+                ? <div id="reject-reason-err" className="field-error" role="alert">{error}</div>
+                : <div />
+              }
+              <span className="char-counter">{remarks.length}/500</span>
+            </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end", marginTop: "20px" }}>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={onCancel}
-            disabled={busy}
-          >
-            Cancel
-          </button>
-          <button
-            className="btn btn-danger btn-sm"
-            onClick={handleSubmit}
-            disabled={busy}
-          >
-            {busy ? "⏳ Rejecting..." : "✖ Confirm Rejection"}
+        <div className="modal-footer">
+          <button className="btn btn-secondary btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="btn btn-danger btn-sm" onClick={submit} disabled={busy}>
+            <XCircle size={14} />
+            {busy ? "Rejecting…" : "Confirm Rejection"}
           </button>
         </div>
       </div>
@@ -177,76 +221,106 @@ function RejectModal({ open, item, busy, onConfirm, onCancel }) {
   );
 }
 
-// =============================================================================
-// Main Dashboard Component
-// =============================================================================
 /**
- * Modern Commercial-Grade Dashboard for Settribe Leave Management.
+ * FilterPills — compact pill buttons for quick status/type filtering
+ * Shows "All" + one pill per option; active pill uses brand green.
+ */
+function FilterPills({ label: groupLabel, options, value, onChange }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <button
+        className={`filter-pill ${value === "" ? "active" : ""}`}
+        onClick={() => onChange("")}
+      >
+        All {groupLabel}
+      </button>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          className={`filter-pill ${value === opt.value ? "active" : ""}`}
+          onClick={() => onChange(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Main Dashboard
+   ────────────────────────────────────────────────────────────────────────── */
+
+const STATUS_OPTIONS = [
+  { value: "PENDING",  label: "⏳ Pending"  },
+  { value: "APPROVED", label: "✅ Approved" },
+  { value: "REJECTED", label: "❌ Rejected" },
+];
+
+const TYPE_OPTIONS = TYPES.map((t) => ({ value: t, label: `${label(t)} Leave` }));
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "date",   label: "By Start Date" },
+];
+
+/**
+ * Dashboard — Primary view for both employees and admins.
  *
  * Features:
- * - Personal and admin leave views with search, filter, and sort
- * - Rejection modal with mandatory reason capture
- * - Admin remarks displayed prominently on rejected cards
- * - Employee profile metadata (department, designation, ID) in nav and leave cards
- * - Dark/light theme toggle
- * - KPI summary cards
+ * ✅ Avatar dropdown with profile metadata, dark mode toggle, sign-out
+ * ✅ KPI cards with Lucide icons (CalendarDays, Clock, CheckCircle2, XCircle)
+ * ✅ Leave Balance widget with animated progress bars
+ * ✅ Smart search with clear button + pill filters
+ * ✅ Leave cards with formatted dates, admin remarks callout, re-apply action
+ * ✅ Admin rejection modal with mandatory reason input
+ * ✅ Contextual action buttons per status
+ * ✅ Full dark mode + WCAG AA accessibility
  */
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === "ADMIN";
 
-  // Tab state: "mine" = personal leaves, "all" = organization requests (Admin only)
+  /* ── State ── */
   const [tab, setTab] = useState("mine");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter]     = useState("");
+  const [searchQuery, setSearchQuery]   = useState("");
+  const [sortBy, setSortBy]             = useState("newest");
+  const [showFilters, setShowFilters]   = useState(false);
 
-  // Filter dropdown state
-  const [filters, setFilters] = useState({ status: "", type: "" });
-  // Client-side search keyword
-  const [searchQuery, setSearchQuery] = useState("");
-  // Sort order: "newest" | "oldest" | "date"
-  const [sortBy, setSortBy] = useState("newest");
-
-  // Core data states
-  const [items, setItems] = useState([]);
+  const [items, setItems]   = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError]   = useState("");
   const [notice, setNotice] = useState("");
 
-  // Modals state
-  const [form, setForm] = useState(null); // null = closed, {} = new, obj = edit
-  const [confirmCancel, setConfirmCancel] = useState(null); // item to cancel
-  const [rejectTarget, setRejectTarget] = useState(null); // item pending admin rejection
-  const [busy, setBusy] = useState(false);
+  const [form, setForm]               = useState(null);
+  const [confirmCancel, setConfirmCancel] = useState(null);
+  const [rejectTarget, setRejectTarget]  = useState(null);
+  const [busy, setBusy]               = useState(false);
 
-  // Theme toggle state
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem("theme") === "dark";
-  });
+  const [darkMode, setDarkMode] = useState(
+    () => localStorage.getItem("theme") === "dark"
+  );
 
-  // Apply dark mode theme attribute to root html
+  /* ── Dark mode sync ── */
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.setAttribute("data-theme", "dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.setAttribute("data-theme", "light");
-      localStorage.setItem("theme", "light");
-    }
+    document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
   const base = tab === "all" ? "/admin/leaves" : "/leaves";
 
-  /**
-   * Fetches leave records from the API applying the active query filters.
-   */
+  /* ── Data fetching ── */
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const params = {};
-      if (filters.status) params.status = filters.status;
-      if (filters.type) params.type = filters.type;
-
+      if (statusFilter) params.status = statusFilter;
+      if (typeFilter)   params.type   = typeFilter;
       const { data } = await api.get(base, { params });
       setItems(data);
     } catch (e) {
@@ -254,21 +328,18 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [base, filters]);
+  }, [base, statusFilter, typeFilter]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-  /**
-   * Higher-order async action runner with busy locking and feedback
-   */
-  const run = async (fn, okMsg) => {
+  /* ── Action runner ── */
+  const run = async (fn, msg) => {
     setBusy(true);
     setNotice("");
+    setError("");
     try {
       await fn();
-      setNotice(okMsg);
+      setNotice(msg);
       setForm(null);
       setConfirmCancel(null);
       setRejectTarget(null);
@@ -282,328 +353,322 @@ export default function Dashboard() {
 
   const handleSave = (data) =>
     run(
-      () => (form.id ? api.put(`/leaves/${form.id}`, data) : api.post("/leaves", data)),
-      form.id ? "Leave request updated successfully." : "Leave request submitted successfully."
+      () => form.id ? api.put(`/leaves/${form.id}`, data) : api.post("/leaves", data),
+      form.id ? "Leave request updated successfully." : "Leave request submitted."
     );
 
-  const handleCancelConfirm = () => {
-    if (!confirmCancel) return;
+  const handleCancelConfirm = () =>
     run(() => api.delete(`/leaves/${confirmCancel.id}`), "Leave request cancelled.");
-  };
 
-  /** Admin approve — no reason required */
   const handleApprove = (l) =>
+    run(() => api.put(`/admin/leaves/${l.id}/status`, { status: "APPROVED" }),
+      `✅ Request approved for ${l.userName}.`);
+
+  const handleRejectConfirm = (remarks) =>
     run(
-      () => api.put(`/admin/leaves/${l.id}/status`, { status: "APPROVED" }),
-      `✅ Request #${l.id} has been approved.`
+      () => api.put(`/admin/leaves/${rejectTarget.id}/status`, { status: "REJECTED", adminRemarks: remarks }),
+      `Request rejected.`
     );
 
-  /** Admin reject — opens RejectModal first to capture mandatory reason */
-  const handleRejectConfirm = (remarks) => {
-    if (!rejectTarget) return;
-    run(
-      () =>
-        api.put(`/admin/leaves/${rejectTarget.id}/status`, {
-          status: "REJECTED",
-          adminRemarks: remarks,
-        }),
-      `❌ Request #${rejectTarget.id} has been rejected.`
-    );
-  };
-
-  /**
-   * Logout handler — navigates to /login with a sign-out confirmation notice
-   * that the AuthPage will display in a green banner.
-   */
-  const handleLogout = () => {
-    logout(navigate);
-  };
+  const handleLogout = () => logout(navigate);
 
   const switchTab = (t) => {
     setTab(t);
-    setFilters({ status: "", type: "" });
+    setStatusFilter("");
+    setTypeFilter("");
     setSearchQuery("");
-    setForm(null);
     setNotice("");
+    setShowFilters(false);
   };
 
-  // Filter and sort items locally
+  /* ── Processed items (search + sort client-side) ── */
   const processedItems = useMemo(() => {
-    let result = [...items];
-
-    // Search query filter (matches applicant name, email, reason, or department)
+    let res = [...items];
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (item) =>
-          (item.reason && item.reason.toLowerCase().includes(q)) ||
-          (item.userName && item.userName.toLowerCase().includes(q)) ||
-          (item.userEmail && item.userEmail.toLowerCase().includes(q)) ||
-          (item.leaveType && item.leaveType.toLowerCase().includes(q)) ||
-          (item.userDepartment && item.userDepartment.toLowerCase().includes(q))
+      const q = searchQuery.toLowerCase();
+      res = res.filter((i) =>
+        [i.reason, i.userName, i.userEmail, i.leaveType, i.userDepartment]
+          .some((v) => v?.toLowerCase().includes(q))
       );
     }
-
-    // Sort order
-    if (sortBy === "oldest") {
-      result.sort((a, b) => (a.id > b.id ? 1 : -1));
-    } else if (sortBy === "date") {
-      result.sort((a, b) => new Date(a.fromDate) - new Date(b.fromDate));
-    } else {
-      // newest
-      result.sort((a, b) => (a.id < b.id ? 1 : -1));
-    }
-
-    return result;
+    if (sortBy === "oldest") res.sort((a, b) => a.id - b.id);
+    else if (sortBy === "date") res.sort((a, b) => new Date(a.fromDate) - new Date(b.fromDate));
+    else res.sort((a, b) => b.id - a.id);
+    return res;
   }, [items, searchQuery, sortBy]);
 
-  // Calculate dynamic metrics
-  const metrics = useMemo(() => {
-    const total = items.length;
-    const pending = items.filter((i) => i.status === "PENDING").length;
-    const approved = items.filter((i) => i.status === "APPROVED").length;
-    const rejected = items.filter((i) => i.status === "REJECTED").length;
-    return { total, pending, approved, rejected };
-  }, [items]);
+  /* ── KPI metrics ── */
+  const metrics = useMemo(() => ({
+    total:    items.length,
+    pending:  items.filter((i) => i.status === "PENDING").length,
+    approved: items.filter((i) => i.status === "APPROVED").length,
+    rejected: items.filter((i) => i.status === "REJECTED").length,
+  }), [items]);
 
+  const activeFilterCount = [statusFilter, typeFilter].filter(Boolean).length;
+
+  /* ── Render ── */
   return (
-    <div className="dashboard-page" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* --------------------------------------------------------------------
-         Top Navigation Bar
-         -------------------------------------------------------------------- */}
-      <nav className="site-nav" aria-label="Dashboard Navigation">
+    <div className="dashboard-page">
+
+      {/* ================================================================
+          Navigation Bar
+          ================================================================ */}
+      <nav className="site-nav" aria-label="Main navigation">
         <div className="nav-container">
-          <Link to="/" className="nav-brand" aria-label="Settribe Home">
-            <SettribeLogo height={36} />
+          {/* Brand */}
+          <Link to="/" className="nav-brand" aria-label="Go to Settribe home">
+            <SettribeLogo height={34} />
           </Link>
 
+          {/* Right side: avatar dropdown only */}
           <div className="nav-actions">
-            {/* Dark/Light Mode Switcher */}
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => setDarkMode(!darkMode)}
-              aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-              title={darkMode ? "Light mode" : "Dark mode"}
-            >
-              {darkMode ? "☀️ Light" : "🌙 Dark"}
-            </button>
-
-            {/* User Greeting & Role Badge with Profile Info */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--ink-primary)" }}>
-                  {user?.name}
-                </div>
-                {/* Show department + employee ID as subtitle if available */}
-                {(user?.department || user?.employeeId) && (
-                  <div style={{ fontSize: "0.7rem", color: "var(--ink-muted)", lineHeight: 1.3 }}>
-                    {user?.employeeId && <span>{user.employeeId}</span>}
-                    {user?.employeeId && user?.department && " · "}
-                    {user?.department && <span>{user.department}</span>}
-                  </div>
-                )}
-              </div>
-              <span className={`badge badge-role ${isAdmin ? "admin" : ""}`}>
-                {label(user?.role)}
-              </span>
-            </div>
-
-            <button onClick={handleLogout} className="btn btn-secondary btn-sm" aria-label="Sign out">
-              Sign out
-            </button>
+            <AvatarDropdown
+              user={user}
+              darkMode={darkMode}
+              onToggleDark={() => setDarkMode((d) => !d)}
+              onLogout={handleLogout}
+            />
           </div>
         </div>
       </nav>
 
-      {/* --------------------------------------------------------------------
-         Main Content Area
-         -------------------------------------------------------------------- */}
+      {/* ================================================================
+          Main Content
+          ================================================================ */}
       <main className="dashboard-container">
-        {/* Alerts / Feedback Banners */}
+
+        {/* Feedback Banners */}
         {notice && (
-          <div className="banner ok" role="status">
-            <span>✅</span>
+          <div className="banner ok" role="status" aria-live="polite">
+            <CheckCircle2 size={16} />
             <div style={{ flex: 1 }}>{notice}</div>
             <button
               onClick={() => setNotice("")}
-              style={{ background: "transparent", border: "none", cursor: "pointer" }}
+              aria-label="Dismiss"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}
             >
-              ✕
+              <X size={14} />
             </button>
           </div>
         )}
-
         {error && (
-          <div className="banner error" role="alert">
-            <span>⚠️</span>
+          <div className="banner error" role="alert" aria-live="assertive">
+            <AlertTriangle size={16} />
             <div style={{ flex: 1 }}>{error}</div>
             <button className="btn btn-sm btn-secondary" onClick={load}>
-              Retry
+              <RefreshCw size={12} /> Retry
             </button>
           </div>
         )}
 
-        {/* Dashboard Title & Actions Header */}
+        {/* Page Header */}
         <header className="dashboard-header">
           <div className="dashboard-title-area">
-            <h1>{tab === "all" ? "Organization Leave Management" : "My Leave Dashboard"}</h1>
+            <h1>
+              {tab === "all" ? "Organization Leave Management" : "My Leave Dashboard"}
+            </h1>
             <p className="muted">
               {tab === "all"
-                ? "Review, evaluate, and manage company-wide employee time-off applications."
-                : "Submit new leave applications and track request statuses in real time."}
+                ? "Review and manage company-wide employee time-off applications."
+                : "Submit new applications and track your request statuses."}
             </p>
-            {/* Show designation if available on personal dashboard */}
-            {tab === "mine" && user?.designation && (
-              <p style={{ fontSize: "0.8125rem", color: "var(--ink-muted)", marginTop: "2px" }}>
-                🏷️ {user.designation}
-                {user?.phoneNumber && ` · 📞 ${user.phoneNumber}`}
-              </p>
-            )}
           </div>
 
           {tab === "mine" && (
             <button
               className="btn btn-accent"
-              onClick={() => {
-                setNotice("");
-                setForm({});
-              }}
+              onClick={() => { setNotice(""); setForm({}); }}
+              aria-label="Apply for leave"
             >
-              + Apply for Leave
+              <CalendarPlus size={15} />
+              Apply for Leave
             </button>
           )}
         </header>
 
-        {/* ------------------------------------------------------------------
-           KPI Summary Cards
-           ------------------------------------------------------------------ */}
-        <section className="metrics-grid" aria-label="Summary Statistics">
-          <div className="metric-card">
-            <div className="metric-header">
-              <span className="metric-title">Total Requests</span>
-              <span className="metric-icon">📑</span>
+        {/* ── KPI Cards ── */}
+        <section className="metrics-grid" aria-label="Leave request summary">
+          {[
+            { label: "Total Requests",      value: metrics.total,    Icon: CalendarDays,  color: "#16a34a", bg: "rgba(22,163,74,0.08)",  sub: "All applications" },
+            { label: "Pending Review",       value: metrics.pending,  Icon: Clock,         color: "#d97706", bg: "rgba(217,119,6,0.08)",   sub: "Awaiting decision" },
+            { label: "Approved",             value: metrics.approved, Icon: CheckCircle2,  color: "#16a34a", bg: "rgba(22,163,74,0.08)",  sub: "Days granted" },
+            { label: "Rejected / Cancelled", value: metrics.rejected, Icon: XCircle,       color: "#dc2626", bg: "rgba(220,38,38,0.08)",  sub: "Declined" },
+          ].map(({ label: lbl, value, Icon, color, bg, sub }) => (
+            <div key={lbl} className="metric-card" aria-label={lbl}>
+              <div className="metric-header">
+                <span className="metric-title">{lbl}</span>
+                <div className="metric-icon-wrap" style={{ background: bg }}>
+                  <Icon size={16} color={color} />
+                </div>
+              </div>
+              <div className="metric-value" style={{ color }}>{value}</div>
+              <span className="metric-subtitle">{sub}</span>
             </div>
-            <div className="metric-value">{metrics.total}</div>
-            <span className="metric-subtitle">All-time applications</span>
-          </div>
-
-          <div className="metric-card">
-            <div className="metric-header">
-              <span className="metric-title">Pending Review</span>
-              <span className="metric-icon">⏳</span>
-            </div>
-            <div className="metric-value" style={{ color: "var(--status-pending-ink)" }}>
-              {metrics.pending}
-            </div>
-            <span className="metric-subtitle">Awaiting approval</span>
-          </div>
-
-          <div className="metric-card">
-            <div className="metric-header">
-              <span className="metric-title">Approved</span>
-              <span className="metric-icon">✅</span>
-            </div>
-            <div className="metric-value" style={{ color: "var(--status-approved-ink)" }}>
-              {metrics.approved}
-            </div>
-            <span className="metric-subtitle">Granted time off</span>
-          </div>
-
-          <div className="metric-card">
-            <div className="metric-header">
-              <span className="metric-title">Rejected / Cancelled</span>
-              <span className="metric-icon">❌</span>
-            </div>
-            <div className="metric-value" style={{ color: "var(--status-rejected-ink)" }}>
-              {metrics.rejected}
-            </div>
-            <span className="metric-subtitle">Declined or withdrawn</span>
-          </div>
+          ))}
         </section>
 
-        {/* ------------------------------------------------------------------
-           Admin Tabs Navigation
-           ------------------------------------------------------------------ */}
+        {/* ── Leave Balance Widget (personal tab only) ── */}
+        {tab === "mine" && <LeaveBalanceWidget items={items} />}
+
+        {/* ── Admin Tabs ── */}
         {isAdmin && (
-          <nav className="tabs-bar" aria-label="View selection">
+          <nav className="tabs-bar" aria-label="View selection" role="tablist">
             <button
+              role="tab"
+              aria-selected={tab === "mine"}
               className={`tab-btn ${tab === "mine" ? "is-active" : ""}`}
               onClick={() => switchTab("mine")}
             >
-              My Personal Leave
+              My Leave
             </button>
             <button
+              role="tab"
+              aria-selected={tab === "all"}
               className={`tab-btn ${tab === "all" ? "is-active" : ""}`}
               onClick={() => switchTab("all")}
             >
-              All Organization Requests ({metrics.pending} Pending)
+              All Requests
+              {metrics.pending > 0 && (
+                <span
+                  style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    minWidth: 18, height: 18, borderRadius: 9999,
+                    background: "#dc2626", color: "#fff",
+                    fontSize: "0.65rem", fontWeight: 800,
+                    marginLeft: 6, padding: "0 4px",
+                  }}
+                  aria-label={`${metrics.pending} pending`}
+                >
+                  {metrics.pending}
+                </span>
+              )}
             </button>
           </nav>
         )}
 
-        {/* ------------------------------------------------------------------
-           Search, Filters & Sorting Toolbar
-           ------------------------------------------------------------------ */}
+        {/* ── Search + Filter Toolbar ── */}
         <div className="toolbar">
+          {/* Search */}
           <div className="search-input-wrap">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon-left" aria-hidden="true">
+              <Search size={15} />
+            </span>
             <input
               type="text"
               className="form-input"
-              placeholder={tab === "all" ? "Search by employee, department, or reason..." : "Search your requests..."}
+              placeholder={
+                tab === "all"
+                  ? "Search by employee, department, reason…"
+                  : "Search your requests…"
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               aria-label="Search leave requests"
             />
+            {searchQuery && (
+              <button
+                className="search-clear-btn"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
 
-          <div className="toolbar-filters">
-            <select
-              aria-label="Filter by status"
-              className="form-select"
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            >
-              <option value="">All Statuses</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {label(s)}
-                </option>
-              ))}
-            </select>
+          {/* Filter toggle */}
+          <button
+            className={`btn btn-secondary btn-sm ${activeFilterCount > 0 ? "btn-accent" : ""}`}
+            onClick={() => setShowFilters((p) => !p)}
+            aria-expanded={showFilters}
+            aria-label="Toggle filters"
+          >
+            <Filter size={13} />
+            Filters
+            {activeFilterCount > 0 && (
+              <span
+                style={{
+                  background: "#fff", color: "#16a34a",
+                  borderRadius: "9999px", width: 16, height: 16,
+                  fontSize: "0.65rem", fontWeight: 800,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
 
+          {/* Sort */}
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <ArrowUpDown size={13} color="var(--ink-muted)" style={{ position: "absolute", left: 10, pointerEvents: "none" }} />
             <select
-              aria-label="Filter by leave type"
-              className="form-select"
-              value={filters.type}
-              onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-            >
-              <option value="">All Categories</option>
-              {TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {label(t)} Leave
-                </option>
-              ))}
-            </select>
-
-            <select
-              aria-label="Sort order"
-              className="form-select"
+              className="form-select btn-sm"
+              style={{ paddingLeft: 30, paddingRight: 24, cursor: "pointer" }}
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
+              aria-label="Sort order"
             >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="date">By Start Date</option>
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
         </div>
 
-        {/* ------------------------------------------------------------------
-           Requests List / States
-           ------------------------------------------------------------------ */}
+        {/* Expanded filter pills */}
+        {showFilters && (
+          <div
+            style={{
+              padding: "14px 16px",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--line-subtle)",
+              borderRadius: "var(--radius-lg)",
+              marginTop: -8,
+              marginBottom: 20,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              boxShadow: "var(--shadow-xs)",
+            }}
+          >
+            <div>
+              <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                Status
+              </p>
+              <FilterPills
+                label="Statuses"
+                options={STATUS_OPTIONS}
+                value={statusFilter}
+                onChange={setStatusFilter}
+              />
+            </div>
+            <div>
+              <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                Leave Type
+              </p>
+              <FilterPills
+                label="Categories"
+                options={TYPE_OPTIONS}
+                value={typeFilter}
+                onChange={setTypeFilter}
+              />
+            </div>
+            {activeFilterCount > 0 && (
+              <button
+                className="btn btn-ghost btn-xs"
+                style={{ alignSelf: "flex-start", color: "#dc2626" }}
+                onClick={() => { setStatusFilter(""); setTypeFilter(""); }}
+              >
+                <X size={12} /> Clear all filters
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ── Request List ── */}
         {loading ? (
-          <div aria-busy="true" aria-label="Loading leave requests">
+          /* Skeleton */
+          <div aria-busy="true" aria-label="Loading requests">
             {[1, 2, 3].map((n) => (
               <div key={n} className="skeleton-card">
                 <div className="skeleton-line short" />
@@ -612,169 +677,185 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        ) : processedItems.length === 0 && !error ? (
+        ) : processedItems.length === 0 ? (
+          /* Empty state */
           <div className="empty-box">
             <div className="empty-box-icon">📋</div>
             <h3>No Leave Requests Found</h3>
-            <p>
-              {searchQuery || filters.status || filters.type
-                ? "No applications match your active search or filter criteria."
+            <p style={{ marginBottom: 16 }}>
+              {searchQuery || statusFilter || typeFilter
+                ? "No results match your active search or filters."
                 : tab === "all"
-                ? "There are currently no leave requests in the organization."
+                ? "There are currently no employee leave requests."
                 : "You haven't submitted any leave requests yet."}
             </p>
-            <div style={{ marginTop: "16px", display: "flex", justifyContent: "center", gap: "10px" }}>
-              {(searchQuery || filters.status || filters.type) && (
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              {(searchQuery || statusFilter || typeFilter) && (
                 <button
                   className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    setFilters({ status: "", type: "" });
-                    setSearchQuery("");
-                  }}
+                  onClick={() => { setSearchQuery(""); setStatusFilter(""); setTypeFilter(""); }}
                 >
-                  Clear Filters
+                  <X size={12} /> Clear Filters
                 </button>
               )}
               {tab === "mine" && (
                 <button className="btn btn-accent btn-sm" onClick={() => setForm({})}>
-                  + Apply for Leave
+                  <CalendarPlus size={13} /> Apply for Leave
                 </button>
               )}
             </div>
           </div>
         ) : (
-          <section className="requests-list" aria-label="Leave Requests">
+          /* Leave cards */
+          <section className="requests-list" aria-label="Leave requests">
             {processedItems.map((l) => {
-              const days = calculateDays(l.fromDate, l.toDate);
-              const typeIcon = getLeaveTypeIcon(l.leaveType);
-              const statusIcon = getStatusIcon(l.status);
+              const days = calcDays(l.fromDate, l.toDate);
+              const isSingle = l.fromDate === l.toDate;
 
               return (
                 <article key={l.id} className="request-card">
+                  {/* ── Left: main info ── */}
                   <div className="request-main">
+                    {/* Title row */}
                     <div className="request-title-row">
-                      <span style={{ fontSize: "1.25rem" }}>{typeIcon}</span>
-                      <span className="request-type-name">{label(l.leaveType)} Leave</span>
-
-                      {/* Status Badge */}
-                      <span
-                        className={`badge ${
-                          l.status === "PENDING"
-                            ? "badge-pending"
-                            : l.status === "APPROVED"
-                            ? "badge-approved"
-                            : "badge-rejected"
-                        }`}
-                      >
-                        {statusIcon} {label(l.status)}
-                      </span>
-
-                      {/* Duration Chip */}
+                      <LeaveTypeChip type={l.leaveType} />
+                      <StatusBadge status={l.status} />
                       <span className="chip">
                         {days} {days === 1 ? "Day" : "Days"}
                       </span>
                     </div>
 
+                    {/* Date row */}
                     <div className="request-date-row">
-                      <span>
-                        📅 <strong>{l.fromDate}</strong> to <strong>{l.toDate}</strong>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <CalendarDays size={13} color="var(--ink-muted)" />
+                        {isSingle
+                          ? fmtDate(l.fromDate)
+                          : <>{fmtDate(l.fromDate)} <span style={{ color: "var(--ink-muted)" }}>→</span> {fmtDate(l.toDate)}</>
+                        }
+                        <span style={{ color: "var(--ink-muted)", fontSize: "0.75rem" }}>
+                          · {days} {days === 1 ? "day" : "days"}
+                        </span>
                       </span>
-                      {/* Admin view: show employee profile info */}
+
+                      {/* Admin view: employee profile */}
                       {tab === "all" && l.userName && (
-                        <span style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                        <span
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 2,
+                          }}
+                        >
                           <span>
-                            👤 <strong>{l.userName}</strong> ({l.userEmail})
+                            👤 <strong>{l.userName}</strong>
+                            <span style={{ color: "var(--ink-muted)", fontSize: "0.8rem" }}>
+                              {" "}({l.userEmail})
+                            </span>
                           </span>
-                          {(l.userDepartment || l.userDesignation || l.userEmployeeId) && (
-                            <span style={{ fontSize: "0.75rem", color: "var(--ink-muted)" }}>
+                          {(l.userEmployeeId || l.userDepartment || l.userDesignation) && (
+                            <span style={{ fontSize: "0.75rem", color: "var(--ink-muted)", display: "flex", gap: 6, flexWrap: "wrap" }}>
                               {l.userEmployeeId && <span>🪪 {l.userEmployeeId}</span>}
-                              {l.userEmployeeId && l.userDepartment && " · "}
                               {l.userDepartment && <span>🏢 {l.userDepartment}</span>}
-                              {l.userDesignation && (
-                                <span> · {l.userDesignation}</span>
-                              )}
+                              {l.userDesignation && <span>· {l.userDesignation}</span>}
                             </span>
                           )}
                         </span>
                       )}
                     </div>
 
+                    {/* Reason */}
                     <p className="request-reason">{l.reason}</p>
 
-                    {/* Admin Remarks — Shown prominently when the leave was rejected or approved with notes */}
+                    {/* Admin Remarks Callout */}
                     {l.adminRemarks && (
-                      <div
-                        style={{
-                          marginTop: "10px",
-                          padding: "10px 14px",
-                          borderRadius: "8px",
-                          background:
-                            l.status === "REJECTED"
-                              ? "rgba(239,68,68,0.08)"
-                              : "rgba(16,185,129,0.08)",
-                          borderLeft: `3px solid ${
-                            l.status === "REJECTED" ? "#ef4444" : "#10b981"
-                          }`,
-                          fontSize: "0.8125rem",
-                        }}
-                      >
-                        <strong style={{ color: l.status === "REJECTED" ? "#ef4444" : "#10b981" }}>
-                          {l.status === "REJECTED" ? "❌ Rejection Reason from Management:" : "✅ Management Note:"}
-                        </strong>{" "}
-                        <span style={{ color: "var(--ink-secondary)" }}>{l.adminRemarks}</span>
-                      </div>
+                      <AdminRemarksCallout
+                        status={l.status}
+                        remarks={l.adminRemarks}
+                        onReApply={
+                          tab === "mine" && l.status === "REJECTED"
+                            ? () => setForm({ leaveType: l.leaveType, fromDate: l.fromDate, toDate: l.toDate, reason: "" })
+                            : null
+                        }
+                      />
                     )}
                   </div>
 
-                  {/* Actions Bar */}
+                  {/* ── Right: contextual actions ── */}
                   <div className="request-actions">
-                    {/* Personal Pending Actions */}
+                    {/* Personal Pending → Edit + Cancel */}
                     {tab === "mine" && l.status === "PENDING" && (
                       <>
                         <button
                           className="btn btn-secondary btn-sm"
-                          onClick={() => {
-                            setNotice("");
-                            setForm(l);
-                          }}
+                          onClick={() => { setNotice(""); setForm(l); }}
+                          aria-label="Edit leave request"
                         >
-                          ✏️ Edit
+                          <Pencil size={12} /> Edit
                         </button>
                         <button
                           className="btn btn-danger-outline btn-sm"
                           disabled={busy}
                           onClick={() => setConfirmCancel(l)}
+                          aria-label="Cancel leave request"
                         >
-                          Cancel
+                          <Trash2 size={12} /> Cancel
                         </button>
                       </>
                     )}
 
-                    {/* Admin Pending Actions */}
+                    {/* Personal Approved → Export (placeholder) */}
+                    {tab === "mine" && l.status === "APPROVED" && (
+                      <>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => window.print()}
+                          aria-label="Export leave record"
+                          title="Export / Print"
+                        >
+                          <Download size={12} /> Export
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => {
+                            const url = `https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(label(l.leaveType)+" Leave")}&dates=${l.fromDate.replace(/-/g,"")}/${l.toDate.replace(/-/g,"")}`;
+                            window.open(url, "_blank", "noreferrer");
+                          }}
+                          aria-label="Add to Google Calendar"
+                          title="Add to Google Calendar"
+                        >
+                          <CalendarPlus size={12} /> Calendar
+                        </button>
+                      </>
+                    )}
+
+                    {/* Admin Pending → Approve + Reject */}
                     {tab === "all" && l.status === "PENDING" && (
                       <>
                         <button
                           className="btn btn-accent btn-sm"
                           disabled={busy}
                           onClick={() => handleApprove(l)}
+                          aria-label={`Approve ${l.userName}'s request`}
                         >
-                          ✔ Approve
+                          <ThumbsUp size={12} /> Approve
                         </button>
                         <button
                           className="btn btn-danger btn-sm"
                           disabled={busy}
-                          onClick={() => {
-                            setError("");
-                            setRejectTarget(l);
-                          }}
+                          onClick={() => { setError(""); setRejectTarget(l); }}
+                          aria-label={`Reject ${l.userName}'s request`}
                         >
-                          ✖ Reject
+                          <ThumbsDown size={12} /> Reject
                         </button>
                       </>
                     )}
 
-                    {l.status !== "PENDING" && (
-                      <span style={{ fontSize: "0.8125rem", color: "var(--ink-muted)", textAlign: "center" }}>
+                    {/* Finalized state label */}
+                    {((tab === "mine"  && l.status !== "PENDING") ||
+                      (tab === "all"   && l.status !== "PENDING")) &&
+                      tab !== "mine" && (
+                      <span style={{ fontSize: "0.75rem", color: "var(--ink-muted)", textAlign: "center", paddingTop: 4 }}>
                         Finalized
                       </span>
                     )}
@@ -785,51 +866,54 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* ------------------------------------------------------------------
-           Leave Form Modal (Create or Edit)
-           ------------------------------------------------------------------ */}
-        {form && (
-          <LeaveForm
-            initial={form}
-            busy={busy}
-            onSubmit={handleSave}
-            onCancel={() => setForm(null)}
-          />
+        {/* Result count */}
+        {!loading && processedItems.length > 0 && (
+          <p style={{ marginTop: 16, fontSize: "0.8125rem", color: "var(--ink-muted)", textAlign: "center" }}>
+            Showing {processedItems.length} of {items.length} request{items.length !== 1 ? "s" : ""}
+          </p>
         )}
-
-        {/* ------------------------------------------------------------------
-           Admin Rejection Reason Modal
-           ------------------------------------------------------------------ */}
-        <RejectModal
-          open={!!rejectTarget}
-          item={rejectTarget}
-          busy={busy}
-          onConfirm={handleRejectConfirm}
-          onCancel={() => setRejectTarget(null)}
-        />
-
-        {/* ------------------------------------------------------------------
-           In-App Confirmation Modal (Cancelling Request)
-           ------------------------------------------------------------------ */}
-        <ConfirmModal
-          open={!!confirmCancel}
-          title="Cancel Leave Application"
-          message={`Are you sure you want to cancel your ${confirmCancel ? label(confirmCancel.leaveType) : ""} leave request for ${confirmCancel?.fromDate} to ${confirmCancel?.toDate}? This action cannot be undone.`}
-          confirmText="Yes, Cancel Request"
-          cancelText="Keep Request"
-          isDestructive={true}
-          onConfirm={handleCancelConfirm}
-          onCancel={() => setConfirmCancel(null)}
-        />
       </main>
 
+      {/* ── Leave Form Modal ── */}
+      {form && (
+        <LeaveForm
+          initial={form}
+          busy={busy}
+          onSubmit={handleSave}
+          onCancel={() => setForm(null)}
+        />
+      )}
+
+      {/* ── Admin Rejection Modal ── */}
+      <RejectModal
+        open={!!rejectTarget}
+        item={rejectTarget}
+        busy={busy}
+        onConfirm={handleRejectConfirm}
+        onCancel={() => setRejectTarget(null)}
+      />
+
+      {/* ── Cancel Confirmation Modal ── */}
+      <ConfirmModal
+        open={!!confirmCancel}
+        title="Cancel Leave Application"
+        message={`Are you sure you want to withdraw your ${confirmCancel ? label(confirmCancel.leaveType) : ""} leave request for ${fmtDate(confirmCancel?.fromDate)} → ${fmtDate(confirmCancel?.toDate)}? This cannot be undone.`}
+        confirmText="Yes, Cancel Request"
+        cancelText="Keep Request"
+        isDestructive={true}
+        onConfirm={handleCancelConfirm}
+        onCancel={() => setConfirmCancel(null)}
+      />
+
       {/* Footer */}
-      <footer className="site-footer" style={{ marginTop: "auto", padding: "24px" }}>
-        <div className="footer-container" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", fontSize: "0.8125rem", color: "var(--ink-muted)" }}>
-          <span>© 2026 SETTribe LLP — Employee Leave Management System</span>
-          <span>
-            Logged in as <strong>{user?.email}</strong>
-            {user?.employeeId && <span style={{ marginLeft: "8px", opacity: 0.7 }}>({user.employeeId})</span>}
+      <footer className="site-footer">
+        <div className="footer-container">
+          <span>© {new Date().getFullYear()} SETTribe LLP · Leave Management System</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            Signed in as <strong>{user?.email}</strong>
+            {user?.employeeId && (
+              <span className="chip" style={{ fontSize: "0.7rem" }}>{user.employeeId}</span>
+            )}
           </span>
         </div>
       </footer>

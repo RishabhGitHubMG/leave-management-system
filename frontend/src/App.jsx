@@ -4,6 +4,7 @@ import { useAuth } from "./auth";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
+import AdminUsers from "./pages/AdminUsers";
 
 /**
  * Protected Route Wrapper:
@@ -47,6 +48,7 @@ export default function App() {
 
       {/* Authenticated Dashboard route */}
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+      <Route path="/admin/users" element={<Protected><AdminUsers /></Protected>} />
 
       {/* Catch-all fallback route */}
       <Route path="*" element={<Navigate to="/" replace />} />

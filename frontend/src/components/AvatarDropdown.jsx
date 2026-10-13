@@ -46,6 +46,7 @@ export default function AvatarDropdown({ user, darkMode, onToggleDark, onLogout 
   }, [open]);
 
   const isAdmin = user?.role === "ADMIN";
+  const ROLE_LABEL = { ADMIN: "Admin", HR: "HR", MANAGER: "Manager", EMPLOYEE: "Employee" };
 
   /** Generate 1–2 capital initials from user's full name */
   const initials = user?.name
@@ -109,10 +110,11 @@ export default function AvatarDropdown({ user, darkMode, onToggleDark, onLogout 
               style={{ marginBottom: "8px" }}
             >
               {isAdmin ? (
-                <><Shield size={10} style={{ display: "inline" }} /> Admin</>
+                <Shield size={10} style={{ display: "inline" }} />
               ) : (
-                <><BadgeCheck size={10} style={{ display: "inline" }} /> Employee</>
-              )}
+                <BadgeCheck size={10} style={{ display: "inline" }} />
+              )}{" "}
+              {ROLE_LABEL[user?.role] ?? "Employee"}
             </span>
 
             {/* Extra profile metadata rows */}

@@ -1386,3 +1386,8 @@ a:focus-visible, button:focus-visible, select:focus-visible, [role="tab"]:focus-
   .modal-dialog { border-radius: var(--radius-lg); }
   .dashboard-title-area h1 { font-size: 1.25rem; }
 }
+
+.users-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.users-table th, .users-table td { padding: 10px 12px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--border, #e5e7eb); }
+.users-table th { font-weight: 600; color: var(--ink-secondary); }
+.users-table .form-select { min-width: 140px; }

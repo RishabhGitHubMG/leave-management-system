@@ -115,13 +115,18 @@ public class LeaveService {
     // =========================================================================
 
     /**
-     * Lists all employee leave requests across the entire system.
-     * (Eagerly loads User entities via JOIN FETCH in the repository to prevent N+1 queries).
+     * Lists leave requests the reviewer is allowed to act on: all requests for HR and ADMIN,
+     * only direct reports for MANAGER.
      */
     @Transactional(readOnly = true)
-    public List<LeaveResponse> listAll(LeaveStatus status, LeaveType type) {
-        return leaveRepo.findAllFiltered(status, type)
-                .stream().map(LeaveResponse::from).toList();
+    public List<LeaveResponse> listReviewable(String email, LeaveStatus status, LeaveType type) {
+        User reviewer = currentUser(email);
+        List<LeaveRequest> items = switch (reviewer.getRole()) {
+            case ADMIN, HR -> leaveRepo.findAllFiltered(status, type);
+            case MANAGER -> leaveRepo.findForTeam(reviewer.getId(), status, type);
+            case EMPLOYEE -> throw new ApiException(HttpStatus.FORBIDDEN, "You do not have permission to review leave");
+        };
+        return items.stream().map(LeaveResponse::from).toList();
     }
 
     /**
@@ -132,7 +137,7 @@ public class LeaveService {
      * - Only requests currently in PENDING state can be updated.
      */
     @Transactional
-    public LeaveResponse updateStatus(Long id, StatusUpdateRequest request) {
+    public LeaveResponse updateStatus(String email, Long id, StatusUpdateRequest request) {
         if (request.status() == LeaveStatus.PENDING) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Status must be APPROVED or REJECTED");
         }
@@ -146,8 +151,10 @@ public class LeaveService {
             }
         }
 
+        User reviewer = currentUser(email);
         LeaveRequest leave = leaveRepo.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
+        ensureCanReview(reviewer, leave);
         if (leave.getStatus() != LeaveStatus.PENDING) {
             throw new ApiException(HttpStatus.CONFLICT, "Only pending requests can be approved or rejected");
         }
@@ -191,6 +198,22 @@ public class LeaveService {
         return leave;
     }
 
+    private void ensureCanReview(User reviewer, LeaveRequest leave) {
+        User applicant = leave.getUser();
+        if (applicant.getId().equals(reviewer.getId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You cannot review your own leave request");
+        }
+        boolean allowed = switch (reviewer.getRole()) {
+            case ADMIN, HR -> true;
+            case MANAGER -> applicant.getManager() != null
+                    && applicant.getManager().getId().equals(reviewer.getId());
+            case EMPLOYEE -> false;
+        };
+        if (!allowed) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You can only review leave requests from your direct reports");
+        }
+    }
+
     /**
      * Enforces logical date ordering and reasonable enterprise bounds.
      */
@@ -209,5 +232,3 @@ public class LeaveService {
         }
     }
 }
-
-

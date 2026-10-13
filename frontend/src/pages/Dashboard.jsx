@@ -272,6 +272,7 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === "ADMIN";
+  const isReviewer = ["ADMIN", "HR", "MANAGER"].includes(user?.role);
 
   /* ── State ── */
   const [tab, setTab] = useState("mine");
@@ -456,11 +457,15 @@ export default function Dashboard() {
         <header className="dashboard-header">
           <div className="dashboard-title-area">
             <h1>
-              {tab === "all" ? "Organization Leave Management" : "My Leave Dashboard"}
+              {tab === "all"
+                ? (user?.role === "MANAGER" ? "Team Leave Management" : "Organization Leave Management")
+                : "My Leave Dashboard"}
             </h1>
             <p className="muted">
               {tab === "all"
-                ? "Review and manage company-wide employee time-off applications."
+                ? (user?.role === "MANAGER"
+                    ? "Review time-off applications from your direct reports."
+                    : "Review and manage company-wide employee time-off applications.")
                 : "Submit new applications and track your request statuses."}
             </p>
           </div>
@@ -473,6 +478,11 @@ export default function Dashboard() {
             >
               <CalendarPlus size={15} />
               Apply for Leave
+            </button>
+          )}
+          {isAdmin && (
+            <button className="btn btn-secondary" onClick={() => navigate("/admin/users")}>
+              Manage Users
             </button>
           )}
         </header>
@@ -502,7 +512,7 @@ export default function Dashboard() {
         {tab === "mine" && <LeaveBalanceWidget items={items} />}
 
         {/* ── Admin Tabs ── */}
-        {isAdmin && (
+        {isReviewer && (
           <nav className="tabs-bar" aria-label="View selection" role="tablist">
             <button
               role="tab"
@@ -518,7 +528,7 @@ export default function Dashboard() {
               className={`tab-btn ${tab === "all" ? "is-active" : ""}`}
               onClick={() => switchTab("all")}
             >
-              All Requests
+              {user?.role === "MANAGER" ? "Team Requests" : "All Requests"}
               {metrics.pending > 0 && (
                 <span
                   style={{
@@ -820,7 +830,7 @@ export default function Dashboard() {
                     )}
 
                     {/* Admin Pending → Approve + Reject */}
-                    {tab === "all" && l.status === "PENDING" && (
+                    {tab === "all" && l.status === "PENDING" && l.userId !== user?.id && (
                       <>
                         <button
                           className="btn btn-accent btn-sm"

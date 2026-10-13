@@ -63,6 +63,17 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     List<LeaveRequest> findAllFiltered(@Param("status") LeaveStatus status,
                                        @Param("type") LeaveType type);
 
+    @Query("""
+            SELECT l FROM LeaveRequest l JOIN FETCH l.user u
+            WHERE u.manager.id = :managerId
+              AND (:status IS NULL OR l.status = :status)
+              AND (:type IS NULL OR l.leaveType = :type)
+            ORDER BY l.createdAt DESC
+            """)
+    List<LeaveRequest> findForTeam(@Param("managerId") Long managerId,
+                                   @Param("status") LeaveStatus status,
+                                   @Param("type") LeaveType type);
+
     /**
      * Checks if a user already has an active (non-rejected) leave request that overlaps
      * with the specified [fromDate, toDate] date interval, optionally excluding an existing leave ID (for edit operations).
@@ -80,5 +91,3 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
                                 @Param("excludeId") Long excludeId,
                                 @Param("rejectedStatus") LeaveStatus rejectedStatus);
 }
-
-

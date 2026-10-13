@@ -6,6 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -91,6 +92,18 @@ public class User {
      * Deactivated accounts cannot log in or use existing tokens. Rows are never deleted,
      * so leave history stays linked to the user.
      */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "manager_id")
+    private User manager;
+
+    @Column(name = "joining_date")
+    private LocalDate joiningDate;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "employment_type", length = 20)
+    private EmploymentType employmentType;
+
     @Column(name = "active", nullable = false, columnDefinition = "boolean default true")
     @Builder.Default
     private boolean active = true;

@@ -66,7 +66,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints: Registration and Login
                         .requestMatchers("/api/auth/**").permitAll()
-                        // Admin-only endpoints: Leave approval and admin listing
+                        // Leave review: managers (direct reports), HR and admins (all employees)
+                        .requestMatchers("/api/admin/leaves/**").hasAnyRole("ADMIN", "HR", "MANAGER")
+                        // Admin-only endpoints: user and role management
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // All other endpoints require authentication (valid JWT token)
                         .anyRequest().authenticated())
@@ -115,4 +117,3 @@ public class SecurityConfig {
                 + "\",\"message\":\"" + message + "\"}");
     }
 }
-

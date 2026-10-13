@@ -121,14 +121,13 @@ sequenceDiagram
 
 ---
 
-### Flow 3: Automatic Admin Account Seeding
-To ensure an administrator is always available immediately upon deployment:
+### Flow 3: Optional Admin Account Seeding
 1. At application boot, `AdminInitializer` implements Spring's `CommandLineRunner`.
-2. It checks `UserRepository.existsByEmail` for `admin@test.com`.
-3. If that account does not exist, it creates an `ADMIN` user named `System Admin` with a BCrypt-hashed password, plus department, designation, phone and employee ID defaults.
-4. If the account already exists, it skips creation.
+2. If `ADMIN_EMAIL` and `ADMIN_PASSWORD` are both set, it checks whether that email exists.
+3. If not, it creates an `ADMIN` user named `System Admin` with a BCrypt-hashed password. `ADMIN_PASSWORD` must be at least 8 characters.
+4. If nothing is configured or the account exists, it does nothing.
 
-The email and password are hardcoded in `AdminInitializer`; no environment variables are read.
+No credentials are stored in source code.
 
 ---
 
@@ -315,6 +314,4 @@ frontend/src/
 
 * **Live Frontend**: [https://leave-management-system-frontend-8v9l.onrender.com](https://leave-management-system-frontend-8v9l.onrender.com)
 * **Live Backend**: [https://leave-management-system-1-9uph.onrender.com](https://leave-management-system-1-9uph.onrender.com)
-* **Default Admin Credentials**:
-  * **Email**: `admin@test.com`
-  * **Password**: `Passw0rd!`
+* **Admin account**: set `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the backend to seed one.

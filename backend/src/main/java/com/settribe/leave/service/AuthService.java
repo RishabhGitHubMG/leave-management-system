@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -22,6 +24,9 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final Duration LOCK_DURATION = Duration.ofMinutes(15);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -73,19 +78,41 @@ public class AuthService {
     /**
      * Authenticates an existing user and issues a fresh JWT token.
      *
+     * Failed attempts are persisted so the counter survives the exception rollback;
+     * the account locks for LOCK_DURATION after MAX_FAILED_ATTEMPTS consecutive failures.
+     *
      * @param request Validated LoginRequest payload.
      * @return AuthResponse with JWT token and user details upon successful login.
-     * @throws ApiException with 401 UNAUTHORIZED if email or password do not match.
+     * @throws ApiException with 401 for bad credentials or deactivated accounts, 423 while locked.
      */
-    @Transactional(readOnly = true)
+    @Transactional(noRollbackFor = ApiException.class)
     public AuthResponse login(LoginRequest request) {
         String email = request.email().trim().toLowerCase();
+        ApiException invalid = new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
 
-        // Find user by normalized email and verify raw password against BCrypt hash
-        User user = userRepository.findByEmail(email)
-                .filter(u -> passwordEncoder.matches(request.password(), u.getPassword()))
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+        User user = userRepository.findByEmail(email).orElseThrow(() -> invalid);
+        if (!user.isActive()) {
+            throw invalid;
+        }
 
+        LocalDateTime now = LocalDateTime.now();
+        if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(now)) {
+            throw new ApiException(HttpStatus.LOCKED,
+                    "Account is temporarily locked after repeated failed sign-in attempts. Try again later.");
+        }
+
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            int attempts = user.getFailedLoginAttempts() + 1;
+            if (attempts >= MAX_FAILED_ATTEMPTS) {
+                user.setLockedUntil(now.plus(LOCK_DURATION));
+                attempts = 0;
+            }
+            user.setFailedLoginAttempts(attempts);
+            throw invalid;
+        }
+
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
         return toResponse(user);
     }
 

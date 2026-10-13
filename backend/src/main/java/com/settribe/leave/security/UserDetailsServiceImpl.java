@@ -36,7 +36,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 .withUsername(user.getEmail())
                 .password(user.getPassword())
                 .roles(user.getRole().name()) // Spring automatically prefixes with "ROLE_"
+                .disabled(!user.isActive())
                 .build();
     }
 }
-

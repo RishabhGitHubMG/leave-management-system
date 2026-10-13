@@ -23,32 +23,30 @@ A full-stack web app where employees register, apply for leave and track their r
 ```
 backend/    Spring Boot API (controller -> service -> repository)
 frontend/   React app
-sql/        schema.sql (tables) and queries.sql (SQL assessment queries)
 ```
 
 ## Prerequisites
 
 - JDK 17 or newer
 - Node.js 18 or newer
-- MySQL 8.0.16 or newer (earlier versions ignore CHECK constraints)
+- MySQL 8.0.16 or newer (optional; the backend uses an embedded H2 database by default)
 
 ## Setup
 
-### 1. Database
+### 1. Database (optional)
 
-Create the schema:
+Without configuration, the backend runs on an in-memory H2 database in MySQL compatibility mode, and tables are created automatically on startup. Data is lost when the backend stops.
 
-```bash
-mysql -u root -p < sql/schema.sql
-```
-
-Create a dedicated user for the app (replace the password):
+To use MySQL instead, create a database and a dedicated user (replace the password):
 
 ```sql
+CREATE DATABASE leave_management;
 CREATE USER 'leaveapp'@'localhost' IDENTIFIED BY 'choose_a_password';
 GRANT ALL PRIVILEGES ON leave_management.* TO 'leaveapp'@'localhost';
 FLUSH PRIVILEGES;
 ```
+
+Then set `DB_URL` (for example `jdbc:mysql://localhost:3306/leave_management`), `DB_USER` and `DB_PASSWORD` before starting the backend.
 
 ### 2. Backend
 
@@ -56,11 +54,11 @@ Secrets are read from environment variables. Nothing sensitive is committed.
 
 ```bash
 cd backend
-export DB_USER=leaveapp
-export DB_PASSWORD='choose_a_password'
 export JWT_SECRET=$(openssl rand -base64 32)   # must be at least 32 characters
 ./mvnw spring-boot:run
 ```
+
+Set `DB_URL`, `DB_USER` and `DB_PASSWORD` as well if you use MySQL.
 
 The API runs on `http://localhost:8080`.
 
@@ -72,7 +70,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. To point at a different API, set `VITE_API_URL` (default `http://localhost:8080/api`).
+Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://localhost:8080`, so `VITE_API_URL=/api` works locally. If `VITE_API_URL` is unset, the app calls `http://localhost:8080/api` directly.
 
 ### 4. Create an admin
 
@@ -118,10 +116,3 @@ Send the token as `Authorization: Bearer <token>`.
 - Logout is client-side: the frontend deletes the token.
 - Cancelling a request deletes the row, matching the "delete a pending request" SQL requirement.
 
-## SQL
-
-`sql/queries.sql` holds the assessment queries: list users, requests for a user, count by status, pending requests, approved requests by date, users joined with requests, update status and delete a pending request.
-
-```bash
-mysql -u leaveapp -p -t < sql/queries.sql
-```

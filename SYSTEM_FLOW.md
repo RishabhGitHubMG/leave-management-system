@@ -124,12 +124,11 @@ sequenceDiagram
 ### Flow 3: Automatic Admin Account Seeding
 To ensure an administrator is always available immediately upon deployment:
 1. At application boot, `AdminInitializer` implements Spring's `CommandLineRunner`.
-2. It queries `UserRepository` for any existing user with `role = Role.ADMIN`.
-3. If no admin exists:
-   - Reads environment variables `ADMIN_EMAIL` (default: `admin@test.com`), `ADMIN_PASSWORD` (default: `Passw0rd!`), and `ADMIN_NAME` (default: `System Administrator`).
-   - Hashes the password using BCrypt.
-   - Persists the default Administrator in the database.
-4. If an admin already exists, the initializer logs an info message and skips creation.
+2. It checks `UserRepository.existsByEmail` for `admin@test.com`.
+3. If that account does not exist, it creates an `ADMIN` user named `System Admin` with a BCrypt-hashed password, plus department, designation, phone and employee ID defaults.
+4. If the account already exists, it skips creation.
+
+The email and password are hardcoded in `AdminInitializer`; no environment variables are read.
 
 ---
 
@@ -303,6 +302,8 @@ frontend/src/
 │   └── Dashboard.jsx               # Main application dashboard (4 KPIs, search, filters, sorting, modals)
 └── components/
     ├── SettribeLogo.jsx            # Official Settribe vector SVG brand logo with accent bar
+    ├── AvatarDropdown.jsx          # Initials button with menu (dark mode toggle, logout)
+    ├── LeaveBalanceWidget.jsx      # Leave allowance per type, consumed from the user's requests
     ├── LeaveForm.jsx               # Accessible modal form with duration calculation & character counter
     └── ConfirmModal.jsx            # Accessible in-app confirmation modal (replaces window.confirm)
 ```

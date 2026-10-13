@@ -88,6 +88,21 @@ public class User {
     private String employeeId;
 
     /**
+     * Deactivated accounts cannot log in or use existing tokens. Rows are never deleted,
+     * so leave history stays linked to the user.
+     */
+    @Column(name = "active", nullable = false, columnDefinition = "boolean default true")
+    @Builder.Default
+    private boolean active = true;
+
+    @Column(name = "failed_login_attempts", nullable = false, columnDefinition = "int default 0")
+    @Builder.Default
+    private int failedLoginAttempts = 0;
+
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
+    /**
      * Timestamp when the user account was created.
      * Automatically populated by Hibernate upon insertion and never updated.
      */

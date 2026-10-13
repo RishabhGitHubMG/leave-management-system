@@ -52,13 +52,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     // Reloading from DB ensures disabled accounts and role updates take effect immediately.
                     UserDetails user = userDetailsService.loadUserByUsername(jwtUtil.extractEmail(token));
 
-                    // Build Spring Security Authentication token
-                    UsernamePasswordAuthenticationToken auth =
-                            new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    // Store authenticated user in the security context for this thread
-                    SecurityContextHolder.getContext().setAuthentication(auth);
+                    if (user.isEnabled()) {
+                        UsernamePasswordAuthenticationToken auth =
+                                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    }
                 } catch (UsernameNotFoundException ignored) {
                     // If user was deleted from DB, leave unauthenticated -> triggers 401 Unauthorized
                 }
@@ -69,4 +68,3 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 }
-

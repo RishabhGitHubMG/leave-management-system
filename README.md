@@ -54,11 +54,13 @@ Secrets are read from environment variables. Nothing sensitive is committed.
 
 ```bash
 cd backend
-export JWT_SECRET=$(openssl rand -base64 32)   # must be at least 32 characters
+export JWT_SECRET=$(openssl rand -base64 32)   # required, at least 32 characters
+export ADMIN_EMAIL=admin@example.com           # optional: seeds an ADMIN account on first start
+export ADMIN_PASSWORD='choose-a-strong-password' # optional, at least 8 characters
 ./mvnw spring-boot:run
 ```
 
-Set `DB_URL`, `DB_USER` and `DB_PASSWORD` as well if you use MySQL.
+Set `DB_URL`, `DB_USER` and `DB_PASSWORD` as well if you use MySQL. The backend will not start without `JWT_SECRET`.
 
 The API runs on `http://localhost:8080`.
 

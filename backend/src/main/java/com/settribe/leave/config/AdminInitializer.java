@@ -4,17 +4,14 @@ import com.settribe.leave.entity.Role;
 import com.settribe.leave.entity.User;
 import com.settribe.leave.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 /**
- * Startup bootstrapper that automatically seeds a default ADMIN user into the database
- * if one does not already exist.
- *
- * Implements CommandLineRunner, which runs immediately after the Spring application context starts.
- * The seeded admin account includes full profile metadata to be consistent with the
- * extended User schema introduced in version 2.0.
+ * Creates a bootstrap ADMIN account from ADMIN_EMAIL and ADMIN_PASSWORD when both are set
+ * and no account with that email exists. Does nothing otherwise.
  */
 @Component
 @RequiredArgsConstructor
@@ -23,24 +20,35 @@ public class AdminInitializer implements CommandLineRunner {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @Value("${app.admin.email:}")
+    private String adminEmail;
+
+    @Value("${app.admin.password:}")
+    private String adminPassword;
+
     @Override
     public void run(String... args) {
-        String adminEmail = "admin@test.com";
-
-        // Check if the default admin account already exists to prevent duplicate insertions
-        if (!userRepository.existsByEmail(adminEmail)) {
-            User admin = User.builder()
-                    .name("System Admin")
-                    .email(adminEmail)
-                    .password(passwordEncoder.encode("Passw0rd!")) // Password hashed with BCrypt
-                    .role(Role.ADMIN)                              // Elevated role: ADMIN
-                    .department("Executive Management")
-                    .designation("System Administrator")
-                    .phoneNumber("+1-000-000-0000")
-                    .employeeId("SET-0001")
-                    .build();
-            userRepository.save(admin);
-            System.out.println(">>> Created default Admin user: admin@test.com / Passw0rd!");
+        if (adminEmail == null || adminEmail.isBlank() || adminPassword == null || adminPassword.isBlank()) {
+            return;
         }
+        if (adminPassword.length() < 8) {
+            throw new IllegalStateException("ADMIN_PASSWORD must be at least 8 characters");
+        }
+
+        String email = adminEmail.trim().toLowerCase();
+        if (userRepository.existsByEmail(email)) {
+            return;
+        }
+
+        User admin = User.builder()
+                .name("System Admin")
+                .email(email)
+                .password(passwordEncoder.encode(adminPassword))
+                .role(Role.ADMIN)
+                .department("Executive Management")
+                .designation("System Administrator")
+                .employeeId("SET-0001")
+                .build();
+        userRepository.save(admin);
     }
 }

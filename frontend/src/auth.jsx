@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "./api";
 
@@ -27,18 +27,22 @@ export function AuthProvider({ children }) {
       return null;
     }
   });
+  const sessionVersion = useRef(0);
 
   useEffect(() => {
     let checking = false;
     const refreshUser = async () => {
       if (checking) return;
-      if (!localStorage.getItem("token")) {
+      const token = localStorage.getItem("token");
+      if (!token) {
         setUser(null);
         return;
       }
+      const requestSessionVersion = sessionVersion.current;
       checking = true;
       try {
         const { data } = await api.get("/users/me");
+        if (sessionVersion.current !== requestSessionVersion || localStorage.getItem("token") !== token) return;
         const currentUser = {
           id: data.id,
           name: data.name,
@@ -52,7 +56,11 @@ export function AuthProvider({ children }) {
         localStorage.setItem("user", JSON.stringify(currentUser));
         setUser(currentUser);
       } catch (error) {
-        if (error.response?.status === 401) {
+        if (
+          sessionVersion.current === requestSessionVersion &&
+          localStorage.getItem("token") === token &&
+          error.response?.status === 401
+        ) {
           localStorage.removeItem("token");
           localStorage.removeItem("user");
           setUser(null);
@@ -90,6 +98,7 @@ export function AuthProvider({ children }) {
       phoneNumber: data.phoneNumber || null,
       employeeId: data.employeeId || null,
     };
+    sessionVersion.current += 1;
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(u));
     setUser(u);
@@ -102,6 +111,7 @@ export function AuthProvider({ children }) {
    * - Passes a logout notice message via router state for display on the login page.
    */
   const logout = (navigate) => {
+    sessionVersion.current += 1;
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);

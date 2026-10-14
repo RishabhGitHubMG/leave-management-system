@@ -26,6 +26,8 @@ export default function ConfirmModal({
   isDestructive = true,
   onConfirm,
   onCancel,
+  busy = false,
+  actionError = "",
 }) {
   useEffect(() => {
     if (!open) return;
@@ -66,19 +68,21 @@ export default function ConfirmModal({
         </div>
 
         <div className="modal-body">
+          {actionError && <div className="banner error" role="alert">{actionError}</div>}
           <p style={{ color: "var(--ink-secondary)", fontSize: "0.9375rem", lineHeight: 1.6 }}>
             {message}
           </p>
         </div>
 
         <div className="modal-footer">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel} disabled={busy}>
             {cancelText}
           </button>
           <button
             type="button"
             className={`btn btn-sm ${isDestructive ? "btn-danger" : "btn-accent"}`}
             onClick={onConfirm}
+            disabled={busy}
           >
             {isDestructive && <Trash2 size={13} />}
             {confirmText}

@@ -1,5 +1,6 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "./api";
 
 /**
  * React Context for globally tracking and providing authentication state.
@@ -26,6 +27,51 @@ export function AuthProvider({ children }) {
       return null;
     }
   });
+
+  useEffect(() => {
+    let checking = false;
+    const refreshUser = async () => {
+      if (checking) return;
+      if (!localStorage.getItem("token")) {
+        setUser(null);
+        return;
+      }
+      checking = true;
+      try {
+        const { data } = await api.get("/users/me");
+        const currentUser = {
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          department: data.department || null,
+          designation: data.designation || null,
+          phoneNumber: data.phoneNumber || null,
+          employeeId: data.employeeId || null,
+        };
+        localStorage.setItem("user", JSON.stringify(currentUser));
+        setUser(currentUser);
+      } catch (error) {
+        if (error.response?.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setUser(null);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshUser();
+    };
+    refreshUser();
+    window.addEventListener("focus", refreshUser);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshUser);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
 
   /**
    * Sets the authenticated user session:

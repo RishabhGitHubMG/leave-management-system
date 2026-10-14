@@ -23,6 +23,27 @@ function calculateDays(from, to) {
   return Math.round(diffTime / (1000 * 3600 * 24)) + 1;
 }
 
+function formatLocalDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(value, days) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return formatLocalDate(date);
+}
+
+function dateBounds() {
+  const today = new Date();
+  const min = new Date(today);
+  min.setDate(min.getDate() - 30);
+  const max = new Date(today);
+  max.setFullYear(max.getFullYear() + 1);
+  if (max.getMonth() !== today.getMonth()) max.setDate(0);
+  return { min: formatLocalDate(min), max: formatLocalDate(max) };
+}
+
 /**
  * LeaveForm Modal Component
  * 
@@ -35,7 +56,7 @@ function calculateDays(from, to) {
  * - Real-time field validation with inline error states
  * - Live character counter for reason (10 to 500 characters)
  */
-export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCancel }) {
+export default function LeaveForm({ initial = {}, busy = false, actionError = "", onSubmit, onCancel }) {
   const [f, setF] = useState({
     leaveType: initial.leaveType || "SICK",
     fromDate: initial.fromDate || "",
@@ -72,20 +93,28 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
       }
       return updated;
     });
-    if (errors[k]) {
-      setErrors((prev) => ({ ...prev, [k]: "" }));
-    }
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (next[k]) next[k] = "";
+      if (k === "fromDate" && f.toDate && f.toDate < val) next.toDate = "";
+      return next;
+    });
   };
 
   const validate = () => {
     const errs = {};
+    const bounds = dateBounds();
     if (!f.fromDate) {
       errs.fromDate = "Please choose a start date.";
+    } else if (f.fromDate < bounds.min || f.fromDate > bounds.max) {
+      errs.fromDate = "Start date must be within the past 30 days and next year.";
     }
     if (!f.toDate) {
       errs.toDate = "Please choose an end date.";
     } else if (f.fromDate && f.toDate < f.fromDate) {
       errs.toDate = "End date cannot be earlier than start date.";
+    } else if (f.fromDate && calculateDays(f.fromDate, f.toDate) > 60) {
+      errs.toDate = "A leave request cannot exceed 60 calendar days.";
     }
 
     const trimmedReason = f.reason.trim();
@@ -133,6 +162,7 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
 
         <form onSubmit={submit} noValidate>
           <div className="modal-body">
+            {actionError && <div className="banner error" role="alert">{actionError}</div>}
             {/* Leave Type Selector */}
             <div className="form-group">
               <label htmlFor="leave-type-select" className="form-label">
@@ -165,6 +195,8 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
                   type="date"
                   className={`form-input ${errors.fromDate ? "is-invalid" : ""}`}
                   value={f.fromDate}
+                  min={dateBounds().min}
+                  max={dateBounds().max}
                   onChange={handleChange("fromDate")}
                   disabled={busy}
                   aria-invalid={!!errors.fromDate}
@@ -185,6 +217,7 @@ export default function LeaveForm({ initial = {}, busy = false, onSubmit, onCanc
                   id="to-date-input"
                   type="date"
                   min={f.fromDate}
+                  max={f.fromDate ? addDays(f.fromDate, 59) : undefined}
                   className={`form-input ${errors.toDate ? "is-invalid" : ""}`}
                   value={f.toDate}
                   onChange={handleChange("toDate")}

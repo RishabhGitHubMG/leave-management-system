@@ -116,7 +116,7 @@ function AdminRemarksCallout({ status, remarks, onReApply }) {
 /**
  * RejectModal — Admin must provide a reason (≥5 chars) before rejecting
  */
-function RejectModal({ open, item, busy, onConfirm, onCancel }) {
+function RejectModal({ open, item, busy, actionError, onConfirm, onCancel }) {
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState("");
   const textareaRef = useRef(null);
@@ -165,6 +165,7 @@ function RejectModal({ open, item, busy, onConfirm, onCancel }) {
         </div>
 
         <div className="modal-body">
+          {actionError && <div className="banner error" role="alert">{actionError}</div>}
           {/* Context summary */}
           <div
             style={{
@@ -283,8 +284,10 @@ export default function Dashboard() {
   const [showFilters, setShowFilters]   = useState(false);
 
   const [items, setItems]   = useState([]);
+  const latestLoad = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState("");
+  const [modalError, setModalError] = useState("");
   const [notice, setNotice] = useState("");
 
   const [form, setForm]               = useState(null);
@@ -306,6 +309,7 @@ export default function Dashboard() {
 
   /* ── Data fetching ── */
   const load = useCallback(async () => {
+    const loadId = ++latestLoad.current;
     setLoading(true);
     setError("");
     try {
@@ -313,11 +317,11 @@ export default function Dashboard() {
       if (statusFilter) params.status = statusFilter;
       if (typeFilter)   params.type   = typeFilter;
       const { data } = await api.get(base, { params });
-      setItems(data);
+      if (loadId === latestLoad.current) setItems(data);
     } catch (e) {
-      setError(errMsg(e));
+      if (loadId === latestLoad.current) setError(errMsg(e));
     } finally {
-      setLoading(false);
+      if (loadId === latestLoad.current) setLoading(false);
     }
   }, [base, statusFilter, typeFilter]);
 
@@ -328,15 +332,19 @@ export default function Dashboard() {
     setBusy(true);
     setNotice("");
     setError("");
+    setModalError("");
     try {
       await fn();
       setNotice(msg);
+      setModalError("");
       setForm(null);
       setConfirmCancel(null);
       setRejectTarget(null);
       await load();
     } catch (e) {
-      setError(errMsg(e));
+      const message = errMsg(e);
+      setError(message);
+      setModalError(message);
     } finally {
       setBusy(false);
     }
@@ -473,7 +481,7 @@ export default function Dashboard() {
           {tab === "mine" && (
             <button
               className="btn btn-accent"
-              onClick={() => { setNotice(""); setForm({}); }}
+              onClick={() => { setNotice(""); setModalError(""); setForm({}); }}
               aria-label="Apply for leave"
             >
               <CalendarPlus size={15} />
@@ -699,7 +707,7 @@ export default function Dashboard() {
                 </button>
               )}
               {tab === "mine" && (
-                <button className="btn btn-accent btn-sm" onClick={() => setForm({})}>
+                <button className="btn btn-accent btn-sm" onClick={() => { setModalError(""); setForm({}); }}>
                   <CalendarPlus size={13} /> Apply for Leave
                 </button>
               )}
@@ -774,7 +782,7 @@ export default function Dashboard() {
                         remarks={l.adminRemarks}
                         onReApply={
                           tab === "mine" && l.status === "REJECTED"
-                            ? () => setForm({ leaveType: l.leaveType, fromDate: l.fromDate, toDate: l.toDate, reason: "" })
+                            ? () => { setModalError(""); setForm({ leaveType: l.leaveType, fromDate: l.fromDate, toDate: l.toDate, reason: "" }); }
                             : null
                         }
                       />
@@ -788,7 +796,7 @@ export default function Dashboard() {
                       <>
                         <button
                           className="btn btn-secondary btn-sm"
-                          onClick={() => { setNotice(""); setForm(l); }}
+                          onClick={() => { setNotice(""); setModalError(""); setForm(l); }}
                           aria-label="Edit leave request"
                         >
                           <Pencil size={12} /> Edit
@@ -796,7 +804,7 @@ export default function Dashboard() {
                         <button
                           className="btn btn-danger-outline btn-sm"
                           disabled={busy}
-                          onClick={() => setConfirmCancel(l)}
+                          onClick={() => { setModalError(""); setConfirmCancel(l); }}
                           aria-label="Cancel leave request"
                         >
                           <Trash2 size={12} /> Cancel
@@ -843,7 +851,7 @@ export default function Dashboard() {
                         <button
                           className="btn btn-danger btn-sm"
                           disabled={busy}
-                          onClick={() => { setError(""); setRejectTarget(l); }}
+                          onClick={() => { setError(""); setModalError(""); setRejectTarget(l); }}
                           aria-label={`Reject ${l.userName}'s request`}
                         >
                           <ThumbsDown size={12} /> Reject
@@ -877,6 +885,7 @@ export default function Dashboard() {
         <LeaveForm
           initial={form}
           busy={busy}
+          actionError={modalError}
           onSubmit={handleSave}
           onCancel={() => setForm(null)}
         />
@@ -888,6 +897,7 @@ export default function Dashboard() {
         item={rejectTarget}
         busy={busy}
         onConfirm={handleRejectConfirm}
+        actionError={modalError}
         onCancel={() => setRejectTarget(null)}
       />
 
@@ -899,6 +909,8 @@ export default function Dashboard() {
         confirmText="Yes, Cancel Request"
         cancelText="Keep Request"
         isDestructive={true}
+        busy={busy}
+        actionError={modalError}
         onConfirm={handleCancelConfirm}
         onCancel={() => setConfirmCancel(null)}
       />

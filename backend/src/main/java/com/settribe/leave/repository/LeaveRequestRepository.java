@@ -4,6 +4,7 @@ import com.settribe.leave.entity.LeaveRequest;
 import com.settribe.leave.entity.LeaveStatus;
 import com.settribe.leave.entity.LeaveType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,6 +22,10 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
      * Returns Optional.empty() if the request belongs to a different user, preventing unauthorized access.
      */
     Optional<LeaveRequest> findByIdAndUserId(Long id, Long userId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT l FROM LeaveRequest l WHERE l.id = :id AND l.user.id = :userId")
+    Optional<LeaveRequest> findByIdAndUserIdForUpdate(@Param("id") Long id, @Param("userId") Long userId);
 
     /**
      * Employee View:
@@ -90,4 +95,11 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
                                 @Param("toDate") java.time.LocalDate toDate,
                                 @Param("excludeId") Long excludeId,
                                 @Param("rejectedStatus") LeaveStatus rejectedStatus);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE LeaveRequest l SET l.status = :status, l.adminRemarks = :remarks WHERE l.id = :id AND l.status = :pendingStatus")
+    int updatePendingStatus(@Param("id") Long id,
+                            @Param("status") LeaveStatus status,
+                            @Param("remarks") String remarks,
+                            @Param("pendingStatus") LeaveStatus pendingStatus);
 }

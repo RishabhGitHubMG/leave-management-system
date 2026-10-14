@@ -110,6 +110,17 @@ export function AuthProvider({ children }) {
    * - Sets user state to null, immediately redirecting to login.
    * - Passes a logout notice message via router state for display on the login page.
    */
+  const syncUserProfile = (profile) => {
+    if (!user || user.id !== profile.id) return;
+    const updatedUser = {
+      ...user,
+      name: profile.name,
+      phoneNumber: profile.phoneNumber || null,
+    };
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
   const logout = (navigate) => {
     sessionVersion.current += 1;
     localStorage.removeItem("token");
@@ -122,5 +133,5 @@ export function AuthProvider({ children }) {
     }
   };
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, logout, syncUserProfile }}>{children}</AuthContext.Provider>;
 }

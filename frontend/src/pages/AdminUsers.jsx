@@ -18,6 +18,8 @@ const EMPTY_FORM = {
   managerId: "",
   department: "",
   designation: "",
+  phoneNumber: "",
+  employeeId: "",
   employmentType: "FULL_TIME",
   joiningDate: "",
 };
@@ -34,6 +36,9 @@ export default function AdminUsers() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [savingDetails, setSavingDetails] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -73,6 +78,8 @@ export default function AdminUsers() {
         role: form.role,
         department: form.department.trim() || null,
         designation: form.designation.trim() || null,
+        phoneNumber: form.phoneNumber.trim() || null,
+        employeeId: form.employeeId.trim() || null,
         managerId: form.managerId ? Number(form.managerId) : null,
         employmentType: form.employmentType,
         joiningDate: form.joiningDate || null,
@@ -90,6 +97,50 @@ export default function AdminUsers() {
   };
 
   const setField = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const setEditField = (key) => (e) => setEditForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const openDetails = (user) => {
+    setEditingUser(user);
+    setEditForm({
+      name: user.name || "",
+      department: user.department || "",
+      designation: user.designation || "",
+      phoneNumber: user.phoneNumber || "",
+      joiningDate: user.joiningDate || "",
+      employmentType: user.employmentType || "",
+    });
+  };
+
+  const handleUpdateDetails = async (event) => {
+    event.preventDefault();
+    if (!editingUser || !editForm) return;
+    const normalizedName = editForm.name.trim();
+    if (normalizedName.length < 2) {
+      setError("Name must be at least 2 characters.");
+      return;
+    }
+    setSavingDetails(true);
+    setError("");
+    setNotice("");
+    try {
+      const { data } = await api.put(`/admin/users/${editingUser.id}`, {
+        name: normalizedName,
+        department: editForm.department.trim(),
+        designation: editForm.designation.trim(),
+        phoneNumber: editForm.phoneNumber.trim(),
+        joiningDate: editForm.joiningDate || null,
+        employmentType: editForm.employmentType || undefined,
+      });
+      setUsers((list) => list.map((user) => (user.id === data.id ? data : user)));
+      setEditingUser(null);
+      setEditForm(null);
+      setNotice(`Profile updated for ${data.name}.`);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setSavingDetails(false);
+    }
+  };
 
   return (
     <div className="dashboard-page">
@@ -181,6 +232,16 @@ export default function AdminUsers() {
                 <input id="new-designation" className="form-input" value={form.designation} onChange={setField("designation")} />
               </div>
             </div>
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label" htmlFor="new-phone">Phone number</label>
+                <input id="new-phone" type="tel" className="form-input" maxLength={25} value={form.phoneNumber} onChange={setField("phoneNumber")} />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="new-employee-id">Employee ID</label>
+                <input id="new-employee-id" className="form-input" maxLength={50} value={form.employeeId} onChange={setField("employeeId")} />
+              </div>
+            </div>
             <div className="form-group">
               <label className="form-label" htmlFor="new-joining">Joining date</label>
               <input id="new-joining" type="date" className="form-input" value={form.joiningDate} onChange={setField("joiningDate")} />
@@ -201,17 +262,20 @@ export default function AdminUsers() {
                 <th>Manager</th>
                 <th>Department</th>
                 <th>Status</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => {
                 const self = u.id === user?.id;
-                const busy = busyId === u.id;
+                const editing = editingUser?.id === u.id;
+                const busy = busyId === u.id || (savingDetails && editing);
                 const managerOptions = users.filter(
                   (m) => m.id !== u.id && (m.id === u.managerId || (m.active && m.role !== "EMPLOYEE"))
                 );
                 return (
-                  <tr key={u.id}>
+                  <React.Fragment key={u.id}>
+                    <tr>
                     <td>
                       {u.name}
                       {u.employeeId && <div className="muted">{u.employeeId}</div>}
@@ -222,7 +286,7 @@ export default function AdminUsers() {
                         className="form-select"
                         aria-label={`Role for ${u.name}`}
                         value={u.role}
-                        disabled={self || busy}
+                        disabled={self || busy || editing}
                         onChange={(e) => applyUpdate(u.id, { role: e.target.value }, `Role updated for ${u.name}.`)}
                       >
                         {ROLES.map((r) => <option key={r} value={r}>{pretty(r)}</option>)}
@@ -233,7 +297,7 @@ export default function AdminUsers() {
                         className="form-select"
                         aria-label={`Manager for ${u.name}`}
                         value={u.managerId ?? ""}
-                        disabled={busy}
+                        disabled={busy || editing}
                         onChange={(e) =>
                           applyUpdate(
                             u.id,
@@ -252,7 +316,7 @@ export default function AdminUsers() {
                     <td>
                       <button
                         className={`btn btn-sm ${u.active ? "btn-secondary" : "btn-accent"}`}
-                        disabled={self || busy}
+                        disabled={self || busy || editing}
                         onClick={() =>
                           applyUpdate(
                             u.id,
@@ -264,7 +328,61 @@ export default function AdminUsers() {
                         {u.active ? "Deactivate" : "Reactivate"}
                       </button>
                     </td>
+                    <td>
+                      <button className="btn btn-secondary btn-sm" disabled={savingDetails || editing} onClick={() => openDetails(u)}>
+                        Edit details
+                      </button>
+                    </td>
                   </tr>
+                  {editingUser?.id === u.id && editForm && (
+                    <tr>
+                      <td colSpan="7">
+                        <form className="balance-card" onSubmit={handleUpdateDetails} aria-label={`Edit details for ${u.name}`}>
+                          <div className="form-row-2">
+                            <div className="form-group">
+                              <label className="form-label" htmlFor={`edit-name-${u.id}`}>Name</label>
+                              <input id={`edit-name-${u.id}`} className="form-input" required minLength={2} maxLength={100} value={editForm.name} onChange={setEditField("name")} />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label" htmlFor={`edit-phone-${u.id}`}>Phone number</label>
+                              <input id={`edit-phone-${u.id}`} type="tel" className="form-input" maxLength={25} value={editForm.phoneNumber} onChange={setEditField("phoneNumber")} />
+                            </div>
+                          </div>
+                          <div className="form-row-2">
+                            <div className="form-group">
+                              <label className="form-label" htmlFor={`edit-department-${u.id}`}>Department</label>
+                              <input id={`edit-department-${u.id}`} className="form-input" maxLength={100} value={editForm.department} onChange={setEditField("department")} />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label" htmlFor={`edit-designation-${u.id}`}>Designation</label>
+                              <input id={`edit-designation-${u.id}`} className="form-input" maxLength={100} value={editForm.designation} onChange={setEditField("designation")} />
+                            </div>
+                          </div>
+                          <div className="form-row-2">
+                            <div className="form-group">
+                              <label className="form-label" htmlFor={`edit-employment-${u.id}`}>Employment type</label>
+                              <select id={`edit-employment-${u.id}`} className="form-select" value={editForm.employmentType} onChange={setEditField("employmentType")}>
+                                <option value="" disabled>Select employment type</option>
+                                {EMPLOYMENT_TYPES.map((type) => <option key={type} value={type}>{pretty(type)}</option>)}
+                              </select>
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label" htmlFor={`edit-joining-${u.id}`}>Joining date</label>
+                              <input id={`edit-joining-${u.id}`} type="date" className="form-input" value={editForm.joiningDate} onChange={setEditField("joiningDate")} />
+                              <span className="muted">Leave blank to keep the existing date.</span>
+                            </div>
+                          </div>
+                          <button type="submit" className="btn btn-accent" disabled={savingDetails}>
+                            {savingDetails ? "Saving..." : "Save details"}
+                          </button>
+                          <button type="button" className="btn btn-secondary" disabled={savingDetails} onClick={() => { setEditingUser(null); setEditForm(null); }}>
+                            Cancel
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

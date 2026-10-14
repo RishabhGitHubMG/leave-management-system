@@ -19,3 +19,12 @@ export JWT_SECRET=$(openssl rand -base64 32)   # must be at least 32 characters
 cd frontend
 npm install
 npm run dev
+
+qhewfvanscOIQWFH
+WEFKFVBN
+WKGJG
+DVDKBJWEVKJB
+WEKFBJF
+'EWFVHJ
+EWRFBKUJ
+EWRFBKUJ

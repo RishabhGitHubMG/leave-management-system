@@ -57,7 +57,8 @@ public class LeaveService {
     @Transactional
     public LeaveResponse create(String email, LeaveRequestDto dto) {
         validateDates(dto); // Enforce that toDate is on or after fromDate and within bounds
-        User user = currentUser(email);
+        User user = userRepo.findByEmailForUpdate(email)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
 
         // Prevent overlapping active leave requests for the same employee
         if (leaveRepo.hasOverlappingLeave(user.getId(), dto.fromDate(), dto.toDate(), null, LeaveStatus.REJECTED)) {
@@ -84,6 +85,8 @@ public class LeaveService {
     @Transactional
     public LeaveResponse update(String email, Long id, LeaveRequestDto dto) {
         validateDates(dto);
+        userRepo.findByEmailForUpdate(email)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
         LeaveRequest leave = findOwnPending(email, id, "edited");
 
         // Prevent updating into an overlapping date range with another existing request
@@ -155,18 +158,16 @@ public class LeaveService {
         LeaveRequest leave = leaveRepo.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
         ensureCanReview(reviewer, leave);
-        if (leave.getStatus() != LeaveStatus.PENDING) {
+        String remarks = request.adminRemarks() == null || request.adminRemarks().isBlank()
+                ? null
+                : request.adminRemarks().trim();
+        if (leaveRepo.updatePendingStatus(id, request.status(), remarks, LeaveStatus.PENDING) == 0) {
             throw new ApiException(HttpStatus.CONFLICT, "Only pending requests can be approved or rejected");
         }
 
-        leave.setStatus(request.status());
-
-        // Persist admin remarks (trimmed) for both REJECTED (mandatory) and APPROVED (optional)
-        if (request.adminRemarks() != null && !request.adminRemarks().isBlank()) {
-            leave.setAdminRemarks(request.adminRemarks().trim());
-        }
-
-        return LeaveResponse.from(leaveRepo.save(leave));
+        LeaveRequest updated = leaveRepo.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
+        return LeaveResponse.from(updated);
     }
 
     // =========================================================================
@@ -227,7 +228,7 @@ public class LeaveService {
         if (dto.fromDate().isAfter(java.time.LocalDate.now().plusYears(1))) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Leave start date cannot be more than 1 year in advance");
         }
-        if (java.time.temporal.ChronoUnit.DAYS.between(dto.fromDate(), dto.toDate()) > 60) {
+        if (java.time.temporal.ChronoUnit.DAYS.between(dto.fromDate(), dto.toDate()) >= 60) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "A single leave application cannot exceed 60 consecutive days");
         }
     }

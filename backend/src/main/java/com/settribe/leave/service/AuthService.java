@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.concurrent.ThreadLocalRandom;
@@ -48,6 +49,9 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         String email = request.email().trim().toLowerCase();
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Password must be at most 72 UTF-8 bytes");
+        }
 
         // Check if an account already exists with this email address
         if (userRepository.existsByEmail(email)) {
@@ -89,6 +93,9 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         String email = request.email().trim().toLowerCase();
         ApiException invalid = new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw invalid;
+        }
 
         User user = userRepository.findByEmail(email).orElseThrow(() -> invalid);
         if (!user.isActive()) {

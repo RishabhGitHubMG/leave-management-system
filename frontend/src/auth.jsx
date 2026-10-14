@@ -1,5 +1,6 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "./api";
 
 /**
  * React Context for globally tracking and providing authentication state.
@@ -26,6 +27,59 @@ export function AuthProvider({ children }) {
       return null;
     }
   });
+  const sessionVersion = useRef(0);
+
+  useEffect(() => {
+    let checking = false;
+    const refreshUser = async () => {
+      if (checking) return;
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setUser(null);
+        return;
+      }
+      const requestSessionVersion = sessionVersion.current;
+      checking = true;
+      try {
+        const { data } = await api.get("/users/me");
+        if (sessionVersion.current !== requestSessionVersion || localStorage.getItem("token") !== token) return;
+        const currentUser = {
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          department: data.department || null,
+          designation: data.designation || null,
+          phoneNumber: data.phoneNumber || null,
+          employeeId: data.employeeId || null,
+        };
+        localStorage.setItem("user", JSON.stringify(currentUser));
+        setUser(currentUser);
+      } catch (error) {
+        if (
+          sessionVersion.current === requestSessionVersion &&
+          localStorage.getItem("token") === token &&
+          error.response?.status === 401
+        ) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setUser(null);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshUser();
+    };
+    refreshUser();
+    window.addEventListener("focus", refreshUser);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshUser);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
 
   /**
    * Sets the authenticated user session:
@@ -44,6 +98,7 @@ export function AuthProvider({ children }) {
       phoneNumber: data.phoneNumber || null,
       employeeId: data.employeeId || null,
     };
+    sessionVersion.current += 1;
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(u));
     setUser(u);
@@ -55,7 +110,19 @@ export function AuthProvider({ children }) {
    * - Sets user state to null, immediately redirecting to login.
    * - Passes a logout notice message via router state for display on the login page.
    */
+  const syncUserProfile = (profile) => {
+    if (!user || user.id !== profile.id) return;
+    const updatedUser = {
+      ...user,
+      name: profile.name,
+      phoneNumber: profile.phoneNumber || null,
+    };
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
   const logout = (navigate) => {
+    sessionVersion.current += 1;
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);
@@ -66,5 +133,5 @@ export function AuthProvider({ children }) {
     }
   };
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, login, logout, syncUserProfile }}>{children}</AuthContext.Provider>;
 }

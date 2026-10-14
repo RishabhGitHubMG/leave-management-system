@@ -73,11 +73,12 @@ export default function LeaveBalanceWidget({ items = [] }) {
   const consumed = computeConsumed(items);
 
   return (
-    <div className="balance-card" aria-label="Leave Allowance Balance">
+    <div className="balance-card" aria-label="Estimated Leave Balance">
       <div className="balance-title">
         <CalendarDays size={17} color="var(--brand-green)" />
-        Leave Allowance Balance
+        Estimated Leave Balance
       </div>
+      <p className="muted">Illustrative allowances only; balances are not enforced by the server.</p>
 
       <div className="balance-grid">
         {BALANCE_CONFIG.map(({ type, label, total, icon: Icon, color, bg }) => {

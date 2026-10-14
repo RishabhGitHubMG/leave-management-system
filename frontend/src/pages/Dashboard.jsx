@@ -14,6 +14,7 @@ import LeaveForm, { TYPES, label } from "../components/LeaveForm";
 import ConfirmModal from "../components/ConfirmModal";
 import AvatarDropdown from "../components/AvatarDropdown";
 import LeaveBalanceWidget from "../components/LeaveBalanceWidget";
+import ProfileForm from "../components/ProfileForm";
 
 /* ──────────────────────────────────────────────────────────────────────────
    Utility Helpers
@@ -113,10 +114,63 @@ function AdminRemarksCallout({ status, remarks, onReApply }) {
   );
 }
 
-/**
- * RejectModal — Admin must provide a reason (≥5 chars) before rejecting
- */
-function RejectModal({ open, item, busy, onConfirm, onCancel }) {
+function ApproveModal({ open, item, busy, actionError, onConfirm, onCancel }) {
+  const [remarks, setRemarks] = useState("");
+
+  useEffect(() => {
+    if (open) setRemarks("");
+  }, [open]);
+
+  if (!open || !item) return null;
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="approve-modal-title"
+      onClick={(event) => { if (event.target === event.currentTarget && !busy) onCancel(); }}
+    >
+      <div className="modal-dialog" style={{ maxWidth: 480 }}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <CheckCircle2 size={20} color="#16a34a" />
+            <h2 id="approve-modal-title">Approve Leave Request</h2>
+          </div>
+          <button className="modal-close-btn" onClick={onCancel} disabled={busy} aria-label="Close"><X size={16} /></button>
+        </div>
+        <div className="modal-body">
+          {actionError && <div className="banner error" role="alert">{actionError}</div>}
+          <p style={{ marginBottom: 16, color: "var(--ink-secondary)" }}>
+            Approving <strong>{item.userName}</strong>'s {label(item.leaveType)} Leave ({fmtDate(item.fromDate)} → {fmtDate(item.toDate)}).
+          </p>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label htmlFor="approve-remarks" className="form-label">Approval remarks <span className="muted">(optional)</span></label>
+            <textarea
+              id="approve-remarks"
+              className="form-textarea"
+              rows={4}
+              maxLength={500}
+              value={remarks}
+              onChange={(event) => setRemarks(event.target.value)}
+              placeholder="Add a note for the employee, if needed..."
+              disabled={busy}
+            />
+            <div className="char-counter" style={{ textAlign: "right" }}>{remarks.length}/500</div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary btn-sm" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="btn btn-accent btn-sm" onClick={() => onConfirm(remarks.trim())} disabled={busy}>
+            <ThumbsUp size={14} /> {busy ? "Approving…" : "Confirm Approval"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RejectModal({ open, item, busy, actionError, onConfirm, onCancel }) {
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState("");
   const textareaRef = useRef(null);
@@ -165,6 +219,7 @@ function RejectModal({ open, item, busy, onConfirm, onCancel }) {
         </div>
 
         <div className="modal-body">
+          {actionError && <div className="banner error" role="alert">{actionError}</div>}
           {/* Context summary */}
           <div
             style={{
@@ -269,7 +324,7 @@ const SORT_OPTIONS = [
  * Dashboard — Primary view for both employees and admins.
  */
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, syncUserProfile } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === "ADMIN";
   const isReviewer = ["ADMIN", "HR", "MANAGER"].includes(user?.role);
@@ -283,13 +338,18 @@ export default function Dashboard() {
   const [showFilters, setShowFilters]   = useState(false);
 
   const [items, setItems]   = useState([]);
+  const [balanceItems, setBalanceItems] = useState([]);
+  const latestLoad = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState("");
+  const [modalError, setModalError] = useState("");
   const [notice, setNotice] = useState("");
 
   const [form, setForm]               = useState(null);
   const [confirmCancel, setConfirmCancel] = useState(null);
+  const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget]  = useState(null);
+  const [showProfileForm, setShowProfileForm] = useState(false);
   const [busy, setBusy]               = useState(false);
 
   const [darkMode, setDarkMode] = useState(
@@ -306,6 +366,7 @@ export default function Dashboard() {
 
   /* ── Data fetching ── */
   const load = useCallback(async () => {
+    const loadId = ++latestLoad.current;
     setLoading(true);
     setError("");
     try {
@@ -313,11 +374,17 @@ export default function Dashboard() {
       if (statusFilter) params.status = statusFilter;
       if (typeFilter)   params.type   = typeFilter;
       const { data } = await api.get(base, { params });
-      setItems(data);
+      if (loadId === latestLoad.current) setItems(data);
+      if (base === "/leaves") {
+        const balanceData = statusFilter || typeFilter
+          ? (await api.get("/leaves")).data
+          : data;
+        if (loadId === latestLoad.current) setBalanceItems(balanceData);
+      }
     } catch (e) {
-      setError(errMsg(e));
+      if (loadId === latestLoad.current) setError(errMsg(e));
     } finally {
-      setLoading(false);
+      if (loadId === latestLoad.current) setLoading(false);
     }
   }, [base, statusFilter, typeFilter]);
 
@@ -328,15 +395,20 @@ export default function Dashboard() {
     setBusy(true);
     setNotice("");
     setError("");
+    setModalError("");
     try {
       await fn();
       setNotice(msg);
+      setModalError("");
       setForm(null);
       setConfirmCancel(null);
+      setApproveTarget(null);
       setRejectTarget(null);
       await load();
     } catch (e) {
-      setError(errMsg(e));
+      const message = errMsg(e);
+      setError(message);
+      setModalError(message);
     } finally {
       setBusy(false);
     }
@@ -351,9 +423,11 @@ export default function Dashboard() {
   const handleCancelConfirm = () =>
     run(() => api.delete(`/leaves/${confirmCancel.id}`), "Leave request cancelled.");
 
-  const handleApprove = (l) =>
-    run(() => api.put(`/admin/leaves/${l.id}/status`, { status: "APPROVED" }),
-      `Request approved for ${l.userName}.`);
+  const handleApprove = (remarks) =>
+    run(
+      () => api.put(`/admin/leaves/${approveTarget.id}/status`, { status: "APPROVED", adminRemarks: remarks || null }),
+      `Request approved for ${approveTarget.userName}.`
+    );
 
   const handleRejectConfirm = (remarks) =>
     run(
@@ -418,6 +492,7 @@ export default function Dashboard() {
               user={user}
               darkMode={darkMode}
               onToggleDark={() => setDarkMode((d) => !d)}
+              onEditProfile={() => setShowProfileForm(true)}
               onLogout={handleLogout}
             />
           </div>
@@ -473,7 +548,7 @@ export default function Dashboard() {
           {tab === "mine" && (
             <button
               className="btn btn-accent"
-              onClick={() => { setNotice(""); setForm({}); }}
+              onClick={() => { setNotice(""); setModalError(""); setForm({}); }}
               aria-label="Apply for leave"
             >
               <CalendarPlus size={15} />
@@ -509,7 +584,7 @@ export default function Dashboard() {
         </section>
 
         {/* ── Leave Balance Widget (personal tab only) ── */}
-        {tab === "mine" && <LeaveBalanceWidget items={items} />}
+        {tab === "mine" && <LeaveBalanceWidget items={balanceItems} />}
 
         {/* ── Admin Tabs ── */}
         {isReviewer && (
@@ -699,7 +774,7 @@ export default function Dashboard() {
                 </button>
               )}
               {tab === "mine" && (
-                <button className="btn btn-accent btn-sm" onClick={() => setForm({})}>
+                <button className="btn btn-accent btn-sm" onClick={() => { setModalError(""); setForm({}); }}>
                   <CalendarPlus size={13} /> Apply for Leave
                 </button>
               )}
@@ -774,7 +849,7 @@ export default function Dashboard() {
                         remarks={l.adminRemarks}
                         onReApply={
                           tab === "mine" && l.status === "REJECTED"
-                            ? () => setForm({ leaveType: l.leaveType, fromDate: l.fromDate, toDate: l.toDate, reason: "" })
+                            ? () => { setModalError(""); setForm({ leaveType: l.leaveType, fromDate: l.fromDate, toDate: l.toDate, reason: "" }); }
                             : null
                         }
                       />
@@ -788,7 +863,7 @@ export default function Dashboard() {
                       <>
                         <button
                           className="btn btn-secondary btn-sm"
-                          onClick={() => { setNotice(""); setForm(l); }}
+                          onClick={() => { setNotice(""); setModalError(""); setForm(l); }}
                           aria-label="Edit leave request"
                         >
                           <Pencil size={12} /> Edit
@@ -796,7 +871,7 @@ export default function Dashboard() {
                         <button
                           className="btn btn-danger-outline btn-sm"
                           disabled={busy}
-                          onClick={() => setConfirmCancel(l)}
+                          onClick={() => { setModalError(""); setConfirmCancel(l); }}
                           aria-label="Cancel leave request"
                         >
                           <Trash2 size={12} /> Cancel
@@ -835,7 +910,7 @@ export default function Dashboard() {
                         <button
                           className="btn btn-accent btn-sm"
                           disabled={busy}
-                          onClick={() => handleApprove(l)}
+                          onClick={() => { setModalError(""); setApproveTarget(l); }}
                           aria-label={`Approve ${l.userName}'s request`}
                         >
                           <ThumbsUp size={12} /> Approve
@@ -843,7 +918,7 @@ export default function Dashboard() {
                         <button
                           className="btn btn-danger btn-sm"
                           disabled={busy}
-                          onClick={() => { setError(""); setRejectTarget(l); }}
+                          onClick={() => { setError(""); setModalError(""); setRejectTarget(l); }}
                           aria-label={`Reject ${l.userName}'s request`}
                         >
                           <ThumbsDown size={12} /> Reject
@@ -872,15 +947,37 @@ export default function Dashboard() {
         )}
       </main>
 
+      {showProfileForm && (
+        <ProfileForm
+          user={user}
+          onSave={(profile) => {
+            syncUserProfile(profile);
+            setShowProfileForm(false);
+            setNotice("Profile updated successfully.");
+          }}
+          onCancel={() => setShowProfileForm(false)}
+        />
+      )}
+
       {/* ── Leave Form Modal ── */}
       {form && (
         <LeaveForm
           initial={form}
           busy={busy}
+          actionError={modalError}
           onSubmit={handleSave}
           onCancel={() => setForm(null)}
         />
       )}
+
+      <ApproveModal
+        open={!!approveTarget}
+        item={approveTarget}
+        busy={busy}
+        actionError={modalError}
+        onConfirm={handleApprove}
+        onCancel={() => setApproveTarget(null)}
+      />
 
       {/* ── Admin Rejection Modal ── */}
       <RejectModal
@@ -888,6 +985,7 @@ export default function Dashboard() {
         item={rejectTarget}
         busy={busy}
         onConfirm={handleRejectConfirm}
+        actionError={modalError}
         onCancel={() => setRejectTarget(null)}
       />
 
@@ -899,6 +997,8 @@ export default function Dashboard() {
         confirmText="Yes, Cancel Request"
         cancelText="Keep Request"
         isDestructive={true}
+        busy={busy}
+        actionError={modalError}
         onConfirm={handleCancelConfirm}
         onCancel={() => setConfirmCancel(null)}
       />

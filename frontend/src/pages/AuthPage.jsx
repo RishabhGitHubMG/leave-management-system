@@ -218,7 +218,7 @@ export default function AuthPage({ mode }) {
 
       // Save user session in AuthContext and navigate to dashboard
       login(data);
-      navigate("/dashboard");
+      navigate(location.state?.from || "/dashboard", { replace: true });
     } catch (err) {
       setServerError(errMsg(err));
     } finally {

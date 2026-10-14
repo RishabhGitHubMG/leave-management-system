@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Service
@@ -55,6 +56,10 @@ public class UserService {
             throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
         }
 
+        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Password must be at most 72 UTF-8 bytes");
+        }
+
         User user = User.builder()
                 .name(request.name().trim())
                 .email(email)
@@ -82,11 +87,17 @@ public class UserService {
             if (self && request.role() != Role.ADMIN) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "You cannot remove your own admin role");
             }
+            if (request.role() == Role.EMPLOYEE && userRepo.existsByManager_Id(user.getId())) {
+                throw new ApiException(HttpStatus.CONFLICT, "Reassign this user's direct reports before changing their role");
+            }
             user.setRole(request.role());
         }
         if (request.active() != null) {
             if (self && !request.active()) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "You cannot deactivate your own account");
+            }
+            if (!request.active() && userRepo.existsByManager_Id(user.getId())) {
+                throw new ApiException(HttpStatus.CONFLICT, "Reassign this user's direct reports before deactivating them");
             }
             user.setActive(request.active());
         }
@@ -124,6 +135,9 @@ public class UserService {
         }
         User manager = userRepo.findById(managerId)
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Manager not found"));
+        if (!manager.isActive() || manager.getRole() == Role.EMPLOYEE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Manager must be an active reviewer");
+        }
         if (subject == null) {
             return manager;
         }

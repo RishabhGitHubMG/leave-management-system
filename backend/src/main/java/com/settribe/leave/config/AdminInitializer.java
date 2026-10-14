@@ -5,6 +5,10 @@ import com.settribe.leave.entity.User;
 import com.settribe.leave.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.charset.StandardCharsets;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -17,6 +21,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class AdminInitializer implements CommandLineRunner {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminInitializer.class);
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
@@ -31,12 +36,17 @@ public class AdminInitializer implements CommandLineRunner {
         if (adminEmail == null || adminEmail.isBlank() || adminPassword == null || adminPassword.isBlank()) {
             return;
         }
-        if (adminPassword.length() < 8) {
-            throw new IllegalStateException("ADMIN_PASSWORD must be at least 8 characters");
+        if (adminPassword.length() < 8 || adminPassword.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new IllegalStateException("ADMIN_PASSWORD must be at least 8 characters and at most 72 UTF-8 bytes");
         }
 
         String email = adminEmail.trim().toLowerCase();
-        if (userRepository.existsByEmail(email)) {
+        var existing = userRepository.findByEmail(email);
+        if (existing.isPresent()) {
+            User user = existing.get();
+            if (user.getRole() != Role.ADMIN || !user.isActive()) {
+                log.warn("Configured bootstrap admin {} already exists but is not an active ADMIN account", email);
+            }
             return;
         }
 

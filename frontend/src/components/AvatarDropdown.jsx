@@ -22,7 +22,7 @@ import {
  *
  * @param {{ user: object, darkMode: boolean, onToggleDark: () => void, onLogout: () => void }} props
  */
-export default function AvatarDropdown({ user, darkMode, onToggleDark, onLogout }) {
+export default function AvatarDropdown({ user, darkMode, onToggleDark, onEditProfile, onLogout }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
 
@@ -140,6 +140,18 @@ export default function AvatarDropdown({ user, darkMode, onToggleDark, onLogout 
               </div>
             )}
           </div>
+
+          <button
+            className="dropdown-item"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onEditProfile();
+            }}
+          >
+            <User size={15} color="var(--ink-muted)" />
+            <span>Edit Profile</span>
+          </button>
 
           {/* Dark Mode Toggle */}
           <button

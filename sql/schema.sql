@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   CONSTRAINT uq_users_email UNIQUE (email),
-  CONSTRAINT chk_users_role CHECK (role IN ('EMPLOYEE', 'ADMIN'))
+  CONSTRAINT chk_users_role CHECK (role IN ('EMPLOYEE', 'MANAGER', 'HR', 'ADMIN'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS leave_requests (
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS leave_requests (
   CONSTRAINT fk_leave_user FOREIGN KEY (user_id)
     REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT chk_leave_type CHECK (leave_type IN ('SICK', 'CASUAL', 'ANNUAL', 'UNPAID')),
-  CONSTRAINT chk_leave_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+  CONSTRAINT chk_leave_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')),
   CONSTRAINT chk_leave_dates CHECK (to_date >= from_date),
   INDEX idx_leave_user (user_id),
   INDEX idx_leave_status (status)

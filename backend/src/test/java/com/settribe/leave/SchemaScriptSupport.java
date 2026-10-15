@@ -1,20 +1,13 @@
 package com.settribe.leave;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import org.flywaydb.core.Flyway;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.UUID;
 
-/**
- * Applies sql/schema.sql to an H2 database running in MySQL mode.
- * The MySQL-only CREATE DATABASE and USE statements are skipped.
- */
 final class SchemaScriptSupport {
 
     private SchemaScriptSupport() {
@@ -24,27 +17,63 @@ final class SchemaScriptSupport {
         return DriverManager.getConnection(url, "sa", "");
     }
 
-    static void apply(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            for (String ddl : tableStatements()) {
-                statement.execute(ddl);
+    static MigratedDatabase openMigrated(String databaseName) throws SQLException {
+        String url = newUrl(databaseName);
+        Connection connection = open(url);
+        try {
+            migrate(connection);
+            return new MigratedDatabase(url, connection);
+        } catch (RuntimeException error) {
+            try {
+                connection.close();
+                shutdown(url);
+            } catch (SQLException closeError) {
+                error.addSuppressed(closeError);
             }
+            throw error;
         }
     }
 
-    private static List<String> tableStatements() {
-        String sql;
-        try {
-            sql = Files.readString(Path.of("..", "sql", "schema.sql"), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("Cannot read sql/schema.sql", e);
+    static String newUrl(String databaseName) {
+        return "jdbc:h2:mem:" + databaseName + "_" + UUID.randomUUID().toString().replace("-", "")
+                + ";MODE=MySQL;DB_CLOSE_DELAY=-1";
+    }
+
+    static void migrate(Connection connection) throws SQLException {
+        Flyway.configure()
+                .dataSource(new SingleConnectionDataSource(connection, true))
+                .locations("classpath:db/migration")
+                .cleanDisabled(true)
+                .load()
+                .migrate();
+    }
+
+    static void shutdown(String url) throws SQLException {
+        try (Connection connection = open(url); var statement = connection.createStatement()) {
+            statement.execute("SHUTDOWN");
         }
-        List<String> statements = new ArrayList<>();
-        for (String ddl : sql.substring(sql.indexOf("CREATE TABLE")).split(";")) {
-            if (!ddl.isBlank()) {
-                statements.add(ddl);
+    }
+
+    static final class MigratedDatabase implements AutoCloseable {
+        private final String url;
+        private final Connection connection;
+
+        private MigratedDatabase(String url, Connection connection) {
+            this.url = url;
+            this.connection = connection;
+        }
+
+        Connection connection() {
+            return connection;
+        }
+
+        @Override
+        public void close() throws SQLException {
+            try {
+                connection.close();
+            } finally {
+                shutdown(url);
             }
         }
-        return statements;
     }
 }

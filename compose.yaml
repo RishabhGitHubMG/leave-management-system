@@ -4,6 +4,8 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --innodb-flush-log-at-trx-commit=1
+      - --sync-binlog=1
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env}
       MYSQL_USER: ${DB_USER:?Set DB_USER in .env}
@@ -42,6 +44,40 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     ports:
       - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  mysql-backup:
+    image: mysql:8.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - while true; do sh /usr/local/bin/mysql-backup.sh || echo 'MySQL backup failed; it will retry at the next interval' >&2; sleep "$${BACKUP_INTERVAL_SECONDS}"; done
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env}
+      DB_USER: ${DB_USER:?Set DB_USER in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:?Set BACKUP_RETENTION_DAYS in .env}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_VOLUME_MARKER: ${BACKUP_VOLUME_MARKER:?Set BACKUP_VOLUME_MARKER in .env}
+    volumes:
+      - type: bind
+        source: ${BACKUP_DIR:?Set BACKUP_DIR to a directory on a separate persistent disk}
+        target: /backups
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_DIR:?Set BACKUP_DIR to a directory on a separate persistent disk}/.backup-volume-marker
+        target: /backups/.backup-volume-marker
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./scripts/mysql-backup.sh
+        target: /usr/local/bin/mysql-backup.sh
+        read_only: true
     restart: unless-stopped
 
 volumes:

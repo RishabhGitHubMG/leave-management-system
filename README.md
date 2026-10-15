@@ -49,7 +49,7 @@ docker compose ps
 docker compose logs -f backend
 ```
 
-The Docker profile connects to the Compose service using `DB_URL`, `DB_USER`, and `DB_PASSWORD`, runs the checked-in Flyway migration on an empty database, and then validates the JPA schema. Other profiles keep Flyway disabled and retain the existing `DDL_AUTO` default. The MySQL database files live in the named `mysql-data` volume; stopping or recreating containers does not remove it. MySQL's initialization variables are applied only when that volume is first created; changing `.env` later does not rotate an existing MySQL user's password.
+The Docker profile connects to the Compose service using `DB_URL`, `DB_USER`, and `DB_PASSWORD`, runs the checked-in Flyway migration on an empty database, and then validates the JPA schema. Other profiles keep Flyway disabled and retain the existing `DDL_AUTO` default. MySQL database files live in the project-scoped named volume whose Compose key is `mysql-data`; stopping or recreating containers does not remove it. `restart: unless-stopped` restarts services when Docker starts, provided the Docker engine itself is configured to start after a computer reboot. MySQL initialization variables are applied only when the volume is first created; changing `.env` later does not rotate an existing MySQL user's password.
 
 Stop and restart without removing data:
 
@@ -70,21 +70,45 @@ docker compose logs --tail=100 backend
 
 The application does not currently expose an HTTP health endpoint; the Compose health check covers MySQL only.
 
-Back up the database to a local file and restore it into a deliberately selected target database:
+#### Automatic backups to a separate disk
+
+The `mysql-backup` service makes a consistent SQL dump immediately after the MySQL schema is ready, then repeats every `BACKUP_INTERVAL_SECONDS` (default 86400). It retains the most recent `BACKUP_RETENTION_DAYS` window (default 30 days). The backup service writes only to `BACKUP_DIR`, a host bind mount—not to the MySQL named volume. Backups contain private account and leave data.
+
+Before starting Compose, mount a separate persistent disk (or a suitably mounted NAS) at the parent of `BACKUP_DIR`. Verify that mount is present and physically separate from the Docker data disk; for Linux hosts, inspect `findmnt -T "$(dirname "$BACKUP_DIR")"` and the Docker data-root mount. Do not create the marker until you have verified the mount, or an ordinary directory on the database disk could be mistaken for the backup destination.
+
+Set `BACKUP_DIR` to that mounted directory and set a unique random `BACKUP_VOLUME_MARKER` in `.env`. Create the marker file on the mounted disk using the same value:
 
 ```bash
-umask 077
-mkdir -p backups
-backup_file="backups/leave-management-$(date +%F-%H%M%S).sql"
-docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction --routines --triggers --skip-add-drop-table "$MYSQL_DATABASE"' > "$backup_file"
-
-# Choose a unique, empty restore database name; do not restore over a database with data.
-restore_db="leave_management_restore_$(date +%s)"
-docker compose exec -e RESTORE_DATABASE="$restore_db" mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "CREATE DATABASE $RESTORE_DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"'
-docker compose exec -T -e RESTORE_DATABASE="$restore_db" mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$RESTORE_DATABASE"' < "$backup_file"
+backup_dir=$(sed -n 's/^BACKUP_DIR=//p' .env)
+backup_marker=$(sed -n 's/^BACKUP_VOLUME_MARKER=//p' .env)
+findmnt -T "$(dirname "$backup_dir")"
+sudo mkdir -p "$backup_dir"
+findmnt -T "$(docker info --format '{{.DockerRootDir}}')"
+printf '%s\n' "$backup_marker" | sudo tee "$backup_dir/.backup-volume-marker" >/dev/null
+sudo chmod 600 "$backup_dir/.backup-volume-marker"
+docker compose up --build -d
 ```
 
-Keep backup files private; they contain account and leave data. The restore example creates a separate database and intentionally refuses to drop tables. Confirm that the chosen target name is unused before restoring.
+The marker is bind-mounted read-only into the backup service. If the marker is absent or does not match, scheduled dumps fail closed. Monitor the backup service and disk space:
+
+```bash
+docker compose logs --tail=100 mysql-backup
+docker compose exec mysql-backup df -h /backups
+```
+
+Use host-level disk encryption for the separate backup disk. A separate disk protects against failure of the database disk, but not theft, fire, or loss of the whole computer. Periodically copy encrypted backups to a separately administered off-site/object-storage destination and verify that copy. Protect the MySQL backup disk and `.env`; the dump contains password hashes and personal leave data. The retention job deletes only old matching backup files in the configured backup directory, never database records or volumes.
+
+#### Test a restore without overwriting data
+
+Choose a unique, unused test-database name. The helper refuses to use the configured application database or any existing schema, creates a separate empty schema, imports the dump, and reports row counts. It deliberately leaves the restored test database intact for inspection; it never drops a database.
+
+```bash
+backup_dir=$(sed -n 's/^BACKUP_DIR=//p' .env)
+backup_file=$(find "$backup_dir" -maxdepth 1 -type f -name 'leave-management-*.sql' -print | sort | tail -n 1)
+sh ./scripts/mysql-restore-test.sh "$backup_file" "restore_test_$(date +%s)"
+```
+
+Record the reported counts and compare them with the source counts. Before testing persistence, create clearly identified test users, a manager relationship, leave requests in pending and approved/rejected states, and notifications in the local app; record IDs and counts. Then run `docker compose restart backend`, `docker compose restart mysql`, and `docker compose up --force-recreate -d mysql backend mysql-backup`—never add `-v`—and query those same IDs/counts again. These live restart/restore checks must be performed on a machine with Docker running; they have not been verified in this development environment.
 
 ### 2. Backend outside Docker (optional)
 

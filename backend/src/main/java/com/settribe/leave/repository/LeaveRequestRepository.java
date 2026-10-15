@@ -80,13 +80,13 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
                                    @Param("type") LeaveType type);
 
     /**
-     * Checks if a user already has an active (non-rejected) leave request that overlaps
-     * with the specified [fromDate, toDate] date interval, optionally excluding an existing leave ID (for edit operations).
+     * Checks if a user already has a leave request with a status outside {@code inactiveStatuses}
+     * that overlaps the specified [fromDate, toDate] interval, optionally excluding an existing leave ID (for edit operations).
      */
     @Query("""
             SELECT COUNT(l) > 0 FROM LeaveRequest l
             WHERE l.user.id = :userId
-              AND l.status != :rejectedStatus
+              AND l.status NOT IN :inactiveStatuses
               AND (:excludeId IS NULL OR l.id != :excludeId)
               AND (l.fromDate <= :toDate AND l.toDate >= :fromDate)
             """)
@@ -94,7 +94,7 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
                                 @Param("fromDate") java.time.LocalDate fromDate,
                                 @Param("toDate") java.time.LocalDate toDate,
                                 @Param("excludeId") Long excludeId,
-                                @Param("rejectedStatus") LeaveStatus rejectedStatus);
+                                @Param("inactiveStatuses") java.util.Collection<LeaveStatus> inactiveStatuses);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE LeaveRequest l SET l.status = :status, l.adminRemarks = :remarks WHERE l.id = :id AND l.status = :pendingStatus")

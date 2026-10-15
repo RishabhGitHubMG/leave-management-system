@@ -13,6 +13,7 @@ import SettribeLogo from "../components/SettribeLogo";
 import LeaveForm, { TYPES, label } from "../components/LeaveForm";
 import ConfirmModal from "../components/ConfirmModal";
 import AvatarDropdown from "../components/AvatarDropdown";
+import NotificationBell from "../components/NotificationBell";
 import LeaveBalanceWidget from "../components/LeaveBalanceWidget";
 import ProfileForm from "../components/ProfileForm";
 
@@ -54,6 +55,7 @@ function StatusBadge({ status }) {
     PENDING:  { cls: "badge-pending",  Icon: Clock,         text: "Pending" },
     APPROVED: { cls: "badge-approved", Icon: CheckCircle2,  text: "Approved" },
     REJECTED: { cls: "badge-rejected", Icon: XCircle,       text: "Rejected" },
+    CANCELLED: { cls: "badge-cancelled", Icon: XCircle,     text: "Cancelled" },
   }[status] ?? { cls: "", Icon: Info, text: status };
 
   return (
@@ -310,6 +312,7 @@ const STATUS_OPTIONS = [
   { value: "PENDING",  label: "Pending"  },
   { value: "APPROVED", label: "Approved" },
   { value: "REJECTED", label: "Rejected" },
+  { value: "CANCELLED", label: "Cancelled" },
 ];
 
 const TYPE_OPTIONS = TYPES.map((t) => ({ value: t, label: `${label(t)} Leave` }));
@@ -467,7 +470,7 @@ export default function Dashboard() {
     total:    items.length,
     pending:  items.filter((i) => i.status === "PENDING").length,
     approved: items.filter((i) => i.status === "APPROVED").length,
-    rejected: items.filter((i) => i.status === "REJECTED").length,
+    rejected: items.filter((i) => i.status === "REJECTED" || i.status === "CANCELLED").length,
   }), [items]);
 
   const activeFilterCount = [statusFilter, typeFilter].filter(Boolean).length;
@@ -486,8 +489,8 @@ export default function Dashboard() {
             <SettribeLogo height={34} />
           </Link>
 
-          {/* Right side: avatar dropdown only */}
           <div className="nav-actions">
+            <NotificationBell />
             <AvatarDropdown
               user={user}
               darkMode={darkMode}

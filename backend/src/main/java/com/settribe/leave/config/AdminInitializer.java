@@ -34,6 +34,7 @@ public class AdminInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         if (adminEmail == null || adminEmail.isBlank() || adminPassword == null || adminPassword.isBlank()) {
+            log.warn("No bootstrap admin created: ADMIN_EMAIL and ADMIN_PASSWORD must both be set");
             return;
         }
         if (adminPassword.length() < 8 || adminPassword.getBytes(StandardCharsets.UTF_8).length > 72) {

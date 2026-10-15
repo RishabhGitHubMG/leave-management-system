@@ -18,15 +18,28 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
         if (url.isBlank()) {
             throw new IllegalStateException("DB_URL is required: set it to a JDBC URL for the database.");
         }
-        boolean h2Permitted = hasProfile(environment, "local") || hasProfile(environment, "test");
-        if (url.toLowerCase(Locale.ROOT).startsWith("jdbc:h2:") && !h2Permitted) {
-            throw new IllegalStateException(
-                    "DB_URL points to H2, which is allowed only with SPRING_PROFILES_ACTIVE=local or test. "
-                            + "Configure a persistent MySQL DB_URL.");
+        if (!url.equals(url.strip())) {
+            throw new IllegalStateException("DB_URL must not start or end with whitespace.");
         }
-        if (hasProfile(environment, "render") || hasProfile(environment, "docker")) {
+        boolean onRender = isOnRender(environment);
+        boolean dockerOrRender = onRender || hasProfile(environment, "render") || hasProfile(environment, "docker");
+        if (url.toLowerCase(Locale.ROOT).startsWith("jdbc:h2:")) {
+            if (onRender) {
+                throw new IllegalStateException("DB_URL points to H2, which is not allowed on Render.");
+            }
+            if (dockerOrRender) {
+                throw new IllegalStateException(
+                        "DB_URL points to H2, which is not allowed for the render or docker profiles.");
+            }
+            if (!hasProfile(environment, "local") && !hasProfile(environment, "test")) {
+                throw new IllegalStateException(
+                        "DB_URL points to H2, which is allowed only with SPRING_PROFILES_ACTIVE=local or test. "
+                                + "Configure a persistent MySQL DB_URL.");
+            }
+        }
+        if (dockerOrRender) {
             if (!url.startsWith("jdbc:mysql:")) {
-                throw new IllegalStateException("DB_URL must be a jdbc:mysql URL for the render and docker profiles.");
+                throw new IllegalStateException("DB_URL must be a jdbc:mysql URL on Render and for the render and docker profiles.");
             }
             requireValue(environment, "spring.datasource.username", "DB_USER");
             requireValue(environment, "spring.datasource.password", "DB_PASSWORD");
@@ -39,13 +52,18 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
         return Ordered.LOWEST_PRECEDENCE;
     }
 
+    // Render sets RENDER=true on every runtime, so it is checked independently of SPRING_PROFILES_ACTIVE.
+    private static boolean isOnRender(ConfigurableEnvironment environment) {
+        return "true".equals(resolved(environment, "RENDER"));
+    }
+
     private static boolean hasProfile(ConfigurableEnvironment environment, String profile) {
         return Arrays.asList(environment.getActiveProfiles()).contains(profile);
     }
 
     private static void requireValue(ConfigurableEnvironment environment, String property, String variable) {
         if (resolved(environment, property).isBlank()) {
-            throw new IllegalStateException(variable + " is required for the render and docker profiles.");
+            throw new IllegalStateException(variable + " is required for Render and the render and docker profiles.");
         }
     }
 

@@ -33,36 +33,76 @@ frontend/   React app
 
 ## Setup
 
-### 1. Database (optional)
+### 1. Local Docker MySQL
 
-Without configuration, the backend runs on an in-memory H2 database in MySQL compatibility mode, and tables are created automatically on startup. Data is lost when the backend stops.
+The default backend configuration still uses in-memory H2. For a persistent local MySQL 8 database and backend, create an ignored local environment file from the example and replace every placeholder with unique secrets:
 
-To use MySQL instead, create a database and a dedicated user (replace the password):
-
-```sql
-CREATE DATABASE leave_management;
-CREATE USER 'leaveapp'@'localhost' IDENTIFIED BY 'choose_a_password';
-GRANT ALL PRIVILEGES ON leave_management.* TO 'leaveapp'@'localhost';
-FLUSH PRIVILEGES;
+```bash
+cp .env.example .env
 ```
 
-Then set `DB_URL` (for example `jdbc:mysql://localhost:3306/leave_management`), `DB_USER` and `DB_PASSWORD` before starting the backend.
+Start the local database and API:
 
-### 2. Backend
+```bash
+docker compose up --build -d
+docker compose ps
+docker compose logs -f backend
+```
+
+The Docker profile connects to the Compose service using `DB_URL`, `DB_USER`, and `DB_PASSWORD`, runs the checked-in Flyway migration on an empty database, and then validates the JPA schema. Other profiles keep Flyway disabled and retain the existing `DDL_AUTO` default. The MySQL database files live in the named `mysql-data` volume; stopping or recreating containers does not remove it. MySQL's initialization variables are applied only when that volume is first created; changing `.env` later does not rotate an existing MySQL user's password.
+
+Stop and restart without removing data:
+
+```bash
+docker compose stop
+docker compose start
+```
+
+`docker compose down` removes containers and network but keeps the named volume. **Do not use `docker compose down -v`, `docker volume rm`, or volume-prune commands** if the database contains data.
+
+Check MySQL health and the backend startup logs:
+
+```bash
+docker compose ps
+docker compose exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqladmin ping --silent -h 127.0.0.1 -uroot'
+docker compose logs --tail=100 backend
+```
+
+The application does not currently expose an HTTP health endpoint; the Compose health check covers MySQL only.
+
+Back up the database to a local file and restore it into a deliberately selected target database:
+
+```bash
+umask 077
+mkdir -p backups
+backup_file="backups/leave-management-$(date +%F-%H%M%S).sql"
+docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction --routines --triggers --skip-add-drop-table "$MYSQL_DATABASE"' > "$backup_file"
+
+# Choose a unique, empty restore database name; do not restore over a database with data.
+restore_db="leave_management_restore_$(date +%s)"
+docker compose exec -e RESTORE_DATABASE="$restore_db" mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "CREATE DATABASE $RESTORE_DATABASE CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"'
+docker compose exec -T -e RESTORE_DATABASE="$restore_db" mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$RESTORE_DATABASE"' < "$backup_file"
+```
+
+Keep backup files private; they contain account and leave data. The restore example creates a separate database and intentionally refuses to drop tables. Confirm that the chosen target name is unused before restoring.
+
+### 2. Backend outside Docker (optional)
 
 Secrets are read from environment variables. Nothing sensitive is committed.
 
 ```bash
 cd backend
-export JWT_SECRET=$(openssl rand -base64 32)   # required, at least 32 characters
-export ADMIN_EMAIL=admin@example.com           # optional: seeds an ADMIN account on first start
-export ADMIN_PASSWORD='choose-a-strong-password' # optional, at least 8 characters
+export JWT_SECRET="$(openssl rand -base64 32)"
 ./mvnw spring-boot:run
 ```
 
-Set `DB_URL`, `DB_USER` and `DB_PASSWORD` as well if you use MySQL. The backend will not start without `JWT_SECRET`.
+This mode uses in-memory H2 by default, and its data is lost when the backend stops. For a separately managed MySQL database, set `DB_URL`, `DB_USER`, and `DB_PASSWORD` in the environment. The backend also requires `JWT_SECRET`; `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap inputs and only create an account when none exists.
 
-The API runs on `http://localhost:8080`. For deployment, configure a persistent external database (`DB_URL`, `DB_USER`, `DB_PASSWORD`), a stable strong `JWT_SECRET`, and the frontend origin in `CORS_ORIGIN`; the defaults are intended for development and do not provide durable production storage. `DDL_AUTO` defaults to `update`, so select and validate a deliberate production schema-management strategy before deployment.
+The API runs on `http://localhost:8080`. For deployment, configure a persistent database, a stable strong `JWT_SECRET`, and the frontend origin in `CORS_ORIGIN`. The Docker Compose setup in this repository is for local development only; it is not connected to or automatically used by the online deployment. `DDL_AUTO` defaults to `update` outside the Docker profile.
+
+### Existing data and migration
+
+The repository does not identify the database currently used by the online deployment, and this setup does not inspect, migrate, or replace it. The default H2 database is in-memory, while an externally configured database may persist data elsewhere. Before any data migration, identify the active source, take and verify a backup, restore it into a separate staging MySQL database, then compare user/leave/notification IDs, row counts, foreign keys, and authentication behavior. Do not point the Compose backend at an existing non-empty database: its Flyway migration is for a fresh database, not an existing-schema upgrade.
 
 ### 3. Frontend
 

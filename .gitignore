@@ -12,3 +12,4 @@ frontend/dist/
 .idea/
 .vscode/
 data.txt
+backups/

@@ -84,16 +84,15 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Test-only migration validation; Flyway is not included in the production runtime yet. -->
+        <!-- Runtime migration support is disabled by default and enabled only by the Docker profile. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-mysql</artifactId>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Test -->

@@ -36,7 +36,9 @@ The system follows a modern decoupled client-server architecture:
 
 ### User Roles
 * **`EMPLOYEE`**: Default role assigned upon registration. Can create, view, update, and cancel their own leave requests while in `PENDING` status.
-* **`ADMIN`**: Privileged role. Can view all organizational leave requests across all employees, filter them, and approve or reject pending requests. Also has access to apply for personal leave.
+* **`MANAGER`**: Can review pending requests from their direct reports only.
+* **`HR`**: Can review pending requests from all employees.
+* **`ADMIN`**: Manages users and roles, and can review pending requests from all employees. Also has access to apply for personal leave.
 
 ### Leave Types
 * `SICK`: Medical or health-related absence.
@@ -48,6 +50,7 @@ The system follows a modern decoupled client-server architecture:
 * `PENDING`: Initial state upon submission. Only pending requests can be modified, cancelled, approved, or rejected.
 * `APPROVED`: Finalized positive decision made by an Administrator. Immutable.
 * `REJECTED`: Finalized negative decision made by an Administrator. Immutable.
+* `CANCELLED`: Withdrawn by the employee while `PENDING`. The row is kept for history.
 
 ---
 
@@ -179,7 +182,7 @@ sequenceDiagram
 * **Cancelling a Request**:
   1. The employee clicks **Cancel** and confirms via prompt.
   2. Calls `DELETE /api/leaves/{id}`.
-  3. The backend confirms ownership and `PENDING` status, then deletes the record from the database.
+  3. The backend confirms ownership and `PENDING` status, then sets the status to `CANCELLED`. The row is kept.
 
 ---
 
@@ -196,7 +199,7 @@ sequenceDiagram
 
     Admin->>UI: Selects "All requests" tab
     UI->>API: GET /api/admin/leaves?status=PENDING
-    Note over API: Verified hasRole('ADMIN') by Spring Security
+    Note over API: Verified hasAnyRole('ADMIN','HR','MANAGER') by Spring Security; managers are limited to direct reports
     API->>Service: findAll(status, type)
     Service->>Repo: Queries all leave records with User join
     Repo-->>Service: List<LeaveRequest>
@@ -230,7 +233,8 @@ sequenceDiagram
 ### 2. Role-Based Access Control (RBAC)
 * `/api/auth/**` -> Public.
 * `/api/leaves/**` -> Accessible by authenticated users with role `EMPLOYEE` or `ADMIN`.
-* `/api/admin/**` -> Strictly restricted to users with role `ADMIN`. Requests from standard employees receive `403 Forbidden`.
+* `/api/admin/leaves/**` -> Restricted to `MANAGER`, `HR` and `ADMIN`; managers are further limited to their direct reports.
+* `/api/admin/**` (other routes) -> Restricted to `ADMIN`. Requests from standard employees receive `403 Forbidden`.
 
 ### 3. ID Probing Protection
 * When an employee attempts to view, edit, or cancel a leave ID belonging to another employee, the system intentionally returns **`404 Not Found`** rather than `403 Forbidden`.
@@ -271,8 +275,8 @@ backend/src/main/java/com/settribe/leave/
 ├── entity/
 │   ├── User.java                   # User database entity
 │   ├── LeaveRequest.java           # Leave request database entity
-│   ├── Role.java                   # Enum: EMPLOYEE, ADMIN
-│   ├── LeaveStatus.java            # Enum: PENDING, APPROVED, REJECTED
+│   ├── Role.java                   # Enum: EMPLOYEE, MANAGER, HR, ADMIN
+│   ├── LeaveStatus.java            # Enum: PENDING, APPROVED, REJECTED, CANCELLED
 │   └── LeaveType.java              # Enum: SICK, CASUAL, ANNUAL, UNPAID
 ├── dto/
 │   ├── AuthResponse.java           # Authentication response with JWT

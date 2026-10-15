@@ -76,11 +76,7 @@ Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://
 
 ### 4. Create an admin
 
-Registration always creates an `EMPLOYEE`, so nobody can self-assign admin. Register a user in the app, then promote them:
-
-```sql
-UPDATE users SET role = 'ADMIN' WHERE email = 'your-email@example.com';
-```
+Registration always creates an `EMPLOYEE`, so nobody can self-assign a privileged role. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (step 2) to seed an admin on first start. An existing admin can set other roles (`MANAGER`, `HR`, `ADMIN`) through `PUT /api/admin/users/{id}`.
 
 ## API
 
@@ -91,9 +87,9 @@ UPDATE users SET role = 'ADMIN' WHERE email = 'your-email@example.com';
 | GET | `/api/leaves?status=&type=` | Employee | List own requests (optional filters) |
 | POST | `/api/leaves` | Employee | Apply for leave |
 | PUT | `/api/leaves/{id}` | Owner | Update a pending request |
-| DELETE | `/api/leaves/{id}` | Owner | Cancel (delete) a pending request |
-| GET | `/api/admin/leaves?status=&type=` | Admin | List all requests |
-| PUT | `/api/admin/leaves/{id}/status` | Admin | Approve or reject (`APPROVED` / `REJECTED`) |
+| DELETE | `/api/leaves/{id}` | Owner | Cancel a pending request (kept with status `CANCELLED`) |
+| GET | `/api/admin/leaves?status=&type=` | Manager, HR, Admin | List requests the caller may review (managers see direct reports only) |
+| PUT | `/api/admin/leaves/{id}/status` | Manager (direct reports), HR, Admin | Approve or reject (`APPROVED` / `REJECTED`) |
 
 Send the token as `Authorization: Bearer <token>`.
 
@@ -111,10 +107,10 @@ Send the token as `Authorization: Bearer <token>`.
 ## Security and business rules
 
 - Passwords are stored as BCrypt hashes.
-- Every API except `/api/auth/**` requires a valid JWT; `/api/admin/**` requires the ADMIN role, enforced on the server.
+- Every API except `/api/auth/**` requires a valid JWT. `/api/admin/leaves/**` is open to MANAGER, HR and ADMIN; all other `/api/admin/**` routes require ADMIN. Enforced on the server.
 - Users can only read, edit or cancel their own requests. Someone else's request returns 404, the same as a missing one, so ids cannot be probed.
 - Only `PENDING` requests can be edited, cancelled, approved or rejected.
-- `to_date` must not be before `from_date` (validated in the service and by a database CHECK constraint).
+- `to_date` must not be before `from_date` (validated in the service; `sql/schema.sql` also declares a CHECK constraint).
 - Logout is client-side: the frontend deletes the token.
-- Cancelling a request deletes the row, matching the "delete a pending request" SQL requirement.
+- Cancelling a request keeps the row and sets its status to `CANCELLED`, so history is preserved.
 

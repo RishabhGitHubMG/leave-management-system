@@ -1,5 +1,6 @@
 package com.settribe.leave.config;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Locale;
 import org.springframework.boot.SpringApplication;
@@ -9,10 +10,12 @@ import org.springframework.core.env.ConfigurableEnvironment;
 
 public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
 
+    private static final int MIN_JWT_SECRET_BYTES = 32;
+
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        String url = environment.getProperty("spring.datasource.url", "");
-        if (url.isBlank() || url.contains("${")) {
+        String url = resolved(environment, "spring.datasource.url");
+        if (url.isBlank()) {
             throw new IllegalStateException("DB_URL is required: set it to a JDBC URL for the database.");
         }
         boolean h2Permitted = hasProfile(environment, "local") || hasProfile(environment, "test");
@@ -28,6 +31,7 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
             requireValue(environment, "spring.datasource.username", "DB_USER");
             requireValue(environment, "spring.datasource.password", "DB_PASSWORD");
         }
+        requireJwtSecret(environment);
     }
 
     @Override
@@ -40,9 +44,24 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
     }
 
     private static void requireValue(ConfigurableEnvironment environment, String property, String variable) {
-        String value = environment.getProperty(property, "");
-        if (value.isBlank() || value.contains("${")) {
+        if (resolved(environment, property).isBlank()) {
             throw new IllegalStateException(variable + " is required for the render and docker profiles.");
         }
+    }
+
+    private static void requireJwtSecret(ConfigurableEnvironment environment) {
+        String secret = resolved(environment, "app.jwt.secret");
+        if (secret.isBlank()) {
+            throw new IllegalStateException("JWT_SECRET is required: set it to a secret of at least 32 bytes.");
+        }
+        if (secret.getBytes(StandardCharsets.UTF_8).length < MIN_JWT_SECRET_BYTES) {
+            throw new IllegalStateException("JWT_SECRET must be at least 32 UTF-8 bytes.");
+        }
+    }
+
+    // Non-strict: an unset ${VAR} is treated as missing instead of throwing before the guard's message.
+    private static String resolved(ConfigurableEnvironment environment, String property) {
+        String value = environment.resolvePlaceholders("${" + property + ":}");
+        return value.contains("${") ? "" : value;
     }
 }

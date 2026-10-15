@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
  * and no account with that email exists. Does nothing otherwise.
  */
 @Component
+@Profile("!admin-account-update")
 @RequiredArgsConstructor
 public class AdminInitializer implements CommandLineRunner {
 

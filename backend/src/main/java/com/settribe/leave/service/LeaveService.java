@@ -11,6 +11,7 @@ import com.settribe.leave.exception.ApiException;
 import com.settribe.leave.repository.LeaveRequestRepository;
 import com.settribe.leave.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,9 @@ public class LeaveService {
     private final LeaveRequestRepository leaveRepo;
     private final UserRepository userRepo;
     private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    private static final List<LeaveStatus> INACTIVE_STATUSES = List.of(LeaveStatus.REJECTED, LeaveStatus.CANCELLED);
 
     // =========================================================================
     // Employee Workflow Methods
@@ -62,7 +66,7 @@ public class LeaveService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User not found"));
 
         // Prevent overlapping active leave requests for the same employee
-        if (leaveRepo.hasOverlappingLeave(user.getId(), dto.fromDate(), dto.toDate(), null, LeaveStatus.REJECTED)) {
+        if (leaveRepo.hasOverlappingLeave(user.getId(), dto.fromDate(), dto.toDate(), null, INACTIVE_STATUSES)) {
             throw new ApiException(HttpStatus.CONFLICT, "You already have an active leave request overlapping this date range");
         }
 
@@ -74,7 +78,9 @@ public class LeaveService {
                 .reason(dto.reason().trim())
                 .status(LeaveStatus.PENDING) // New applications always start as PENDING
                 .build();
-        return LeaveResponse.from(leaveRepo.save(leave));
+        LeaveRequest saved = leaveRepo.save(leave);
+        eventPublisher.publishEvent(emailEvent(LeaveEmailEvent.Kind.SUBMITTED, saved, null));
+        return LeaveResponse.from(saved);
     }
 
     /**
@@ -91,7 +97,7 @@ public class LeaveService {
         LeaveRequest leave = findOwnPending(email, id, "edited");
 
         // Prevent updating into an overlapping date range with another existing request
-        if (leaveRepo.hasOverlappingLeave(leave.getUser().getId(), dto.fromDate(), dto.toDate(), leave.getId(), LeaveStatus.REJECTED)) {
+        if (leaveRepo.hasOverlappingLeave(leave.getUser().getId(), dto.fromDate(), dto.toDate(), leave.getId(), INACTIVE_STATUSES)) {
             throw new ApiException(HttpStatus.CONFLICT, "You already have another active leave request overlapping this date range");
         }
 
@@ -104,14 +110,18 @@ public class LeaveService {
 
 
     /**
-     * Deletes / cancels an existing pending leave request.
-     * 
-     * Note: Once a request is APPROVED or REJECTED, it cannot be deleted by the employee.
+     * Cancels an existing pending leave request. The row is kept with CANCELLED status for history.
+     *
+     * Note: Once a request is APPROVED or REJECTED, it cannot be cancelled by the employee.
      */
     @Transactional
-    public void delete(String email, Long id) {
+    public void cancel(String email, Long id) {
         LeaveRequest leave = findOwnPending(email, id, "cancelled");
-        leaveRepo.delete(leave);
+        LeaveEmailEvent event = emailEvent(LeaveEmailEvent.Kind.CANCELLED, leave, null);
+        if (leaveRepo.updatePendingStatus(id, LeaveStatus.CANCELLED, null, LeaveStatus.PENDING) == 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "Only pending requests can be cancelled");
+        }
+        eventPublisher.publishEvent(event);
     }
 
     // =========================================================================
@@ -169,12 +179,24 @@ public class LeaveService {
         LeaveRequest updated = leaveRepo.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
         notificationService.notifyLeaveDecision(updated);
+        LeaveEmailEvent.Kind kind = request.status() == LeaveStatus.APPROVED
+                ? LeaveEmailEvent.Kind.APPROVED
+                : LeaveEmailEvent.Kind.REJECTED;
+        eventPublisher.publishEvent(emailEvent(kind, updated, remarks));
         return LeaveResponse.from(updated);
     }
 
     // =========================================================================
     // Helper & Validation Methods
     // =========================================================================
+
+    private LeaveEmailEvent emailEvent(LeaveEmailEvent.Kind kind, LeaveRequest leave, String remarks) {
+        User applicant = leave.getUser();
+        User manager = applicant.getManager();
+        return new LeaveEmailEvent(kind, applicant.getName(), applicant.getEmail(),
+                manager == null ? null : manager.getEmail(),
+                leave.getLeaveType(), leave.getFromDate(), leave.getToDate(), remarks);
+    }
 
     /**
      * Finds the user entity corresponding to the provided email from the security token.

@@ -806,6 +806,11 @@ body {
   color: var(--status-rejected-ink);
   border-color: var(--status-rejected-border);
 }
+.badge-cancelled {
+  background: rgba(100,116,139,0.1);
+  color: #475569;
+  border-color: rgba(100,116,139,0.3);
+}
 
 .badge-role {
   background: rgba(22,163,74,0.1);

@@ -5,8 +5,8 @@ package com.settribe.leave.entity;
  * - PENDING: Initial state after submission; editable and cancellable by employee.
  * - APPROVED: Application approved by an administrator.
  * - REJECTED: Application rejected by an administrator.
+ * - CANCELLED: Application withdrawn by the employee before a decision; kept for history.
  */
 public enum LeaveStatus {
-    PENDING, APPROVED, REJECTED
+    PENDING, APPROVED, REJECTED, CANCELLED
 }
-

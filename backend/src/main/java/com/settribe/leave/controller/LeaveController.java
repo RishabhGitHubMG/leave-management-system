@@ -73,16 +73,15 @@ public class LeaveController {
     }
 
     /**
-     * Cancels and deletes a pending leave request owned by the authenticated user.
-     * 
+     * Cancels a pending leave request owned by the authenticated user. The request is kept with CANCELLED status.
+     *
      * @param auth Current authentication object.
-     * @param id   ID of the leave request to delete.
+     * @param id   ID of the leave request to cancel.
      * @return HTTP 204 No Content.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(Authentication auth, @PathVariable Long id) {
-        leaveService.delete(auth.getName(), id);
+    public ResponseEntity<Void> cancel(Authentication auth, @PathVariable Long id) {
+        leaveService.cancel(auth.getName(), id);
         return ResponseEntity.noContent().build();
     }
 }
-

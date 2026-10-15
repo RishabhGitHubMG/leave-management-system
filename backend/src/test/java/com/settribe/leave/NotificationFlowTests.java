@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -24,6 +26,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = "app.jwt.secret=test-secret-that-is-at-least-32-characters-long")
 class NotificationFlowTests {
+
+    @MockitoBean
+    private JavaMailSender mailSender;
 
     @Autowired
     private LeaveService leaveService;

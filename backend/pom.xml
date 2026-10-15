@@ -84,6 +84,17 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Runtime migration support is disabled by default and enabled only by the Docker profile. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

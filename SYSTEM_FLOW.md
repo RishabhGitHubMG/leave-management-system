@@ -24,7 +24,7 @@ The system follows a modern decoupled client-server architecture:
   ├── Spring Security Filter Chain
   │     ├── CorsFilter
   │     └── JwtAuthFilter (Extracts and validates token per request)
-  ├── Controllers (REST Endpoints: /api/auth, /api/leaves, /api/admin/leaves)
+  ├── Controllers (REST Endpoints: /api/auth, /api/users/me, /api/leaves, /api/notifications, /api/admin/*)
   ├── Services (Business logic, validation, transaction boundaries)
   ├── Repositories (Spring Data JPA interfaces)
   └── Database (MySQL 8 / H2 in-memory compatibility fallback)
@@ -100,23 +100,27 @@ sequenceDiagram
     actor User as User (Employee or Admin)
     participant UI as React UI (AuthPage)
     participant API as AuthController (/api/auth/login)
-    participant Sec as Spring Security (AuthenticationManager)
+    participant Service as AuthService
+    participant UserRepo as UserRepository
+    participant Encoder as BCrypt PasswordEncoder
     participant JWT as JwtUtil
     participant Context as React AuthContext
 
     User->>UI: Enters Email & Password -> Clicks "Sign in"
     UI->>API: POST /api/auth/login {email, password}
-    API->>Sec: authenticate(UsernamePasswordAuthenticationToken)
-    alt Invalid Credentials
-        Sec-->>API: BadCredentialsException
-        API-->>UI: 401 ApiError "Invalid email or password"
+    API->>Service: login(request)
+    Service->>UserRepo: findByEmail(normalizedEmail)
+    Service->>Encoder: matches(password, storedHash)
+    alt Invalid Credentials / inactive account
+        Service-->>API: 401 ApiError "Invalid email or password"
+        API-->>UI: 401 ApiError
         UI-->>User: Displays error message
     else Valid Credentials
-        Sec-->>API: Authentication success
-        API->>JWT: generateToken(userDetails)
-        JWT-->>API: Signed JWT token (HS256)
-        API-->>UI: 200 OK {token, user: {id, name, email, role}}
-        UI->>Context: login({token, user})
+        Service->>JWT: generateToken(email, role)
+        JWT-->>Service: Signed JWT token (HS256)
+        Service-->>API: AuthResponse with token and user profile
+        API-->>UI: 200 OK + AuthResponse
+        UI->>Context: login(data)
         Context->>Context: Persist in localStorage ("token", "user")
         UI->>UI: Navigate to /dashboard
     end
@@ -232,7 +236,7 @@ sequenceDiagram
 
 ### 2. Role-Based Access Control (RBAC)
 * `/api/auth/**` -> Public.
-* `/api/leaves/**` -> Accessible by authenticated users with role `EMPLOYEE` or `ADMIN`.
+* `/api/leaves/**`, `/api/users/me`, and `/api/notifications/**` -> Accessible to any authenticated user; personal data is scoped to that authenticated account.
 * `/api/admin/leaves/**` -> Restricted to `MANAGER`, `HR` and `ADMIN`; managers are further limited to their direct reports.
 * `/api/admin/**` (other routes) -> Restricted to `ADMIN`. Requests from standard employees receive `403 Forbidden`.
 
@@ -260,8 +264,11 @@ backend/src/main/java/com/settribe/leave/
 │   └── AdminInitializer.java      # Seeds default admin account on startup
 ├── controller/
 │   ├── AuthController.java         # /api/auth (register, login)
-│   ├── LeaveController.java        # /api/leaves (employee actions)
-│   └── AdminLeaveController.java   # /api/admin/leaves (admin actions)
+│   ├── UserController.java         # /api/users/me (profile)
+│   ├── LeaveController.java        # /api/leaves (personal leave actions)
+│   ├── NotificationController.java # /api/notifications (personal notifications)
+│   ├── AdminLeaveController.java   # /api/admin/leaves (leave review)
+│   └── AdminUserController.java    # /api/admin/users (user management)
 ├── service/
 │   ├── AuthService.java            # User registration & login business logic
 │   └── LeaveService.java           # Leave business logic, validations, CRUD

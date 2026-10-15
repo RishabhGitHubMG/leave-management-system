@@ -30,5 +30,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u WHERE u.email = :email")
     Optional<User> findByEmailForUpdate(@Param("email") String email);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE u.id = :id")
+    Optional<User> findByIdForUpdate(@Param("id") Long id);
+
+    boolean existsByEmailAndIdNot(String email, Long id);
+
     boolean existsByManager_Id(Long managerId);
 }

@@ -1,6 +1,6 @@
 -- MySQL 8.0.16+ reference schema for a FRESH database.
--- Mirrors the JPA entities in backend/src/main/java/com/settribe/leave/entity.
--- Existing databases need sql/migrations/001_align_with_entities.sql instead.
+-- Fresh-database schema mirroring the JPA entities in backend/src/main/java/com/settribe/leave/entity.
+-- No migration for existing databases is included; do not apply this script to an existing database without a reviewed migration plan.
 -- Enum values must stay in sync with Role, LeaveStatus, LeaveType and EmploymentType.
 
 CREATE DATABASE IF NOT EXISTS leave_management

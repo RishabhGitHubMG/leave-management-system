@@ -62,7 +62,7 @@ export ADMIN_PASSWORD='choose-a-strong-password' # optional, at least 8 characte
 
 Set `DB_URL`, `DB_USER` and `DB_PASSWORD` as well if you use MySQL. The backend will not start without `JWT_SECRET`.
 
-The API runs on `http://localhost:8080`.
+The API runs on `http://localhost:8080`. For deployment, configure a persistent external database (`DB_URL`, `DB_USER`, `DB_PASSWORD`), a stable strong `JWT_SECRET`, and the frontend origin in `CORS_ORIGIN`; the defaults are intended for development and do not provide durable production storage. `DDL_AUTO` defaults to `update`, so select and validate a deliberate production schema-management strategy before deployment.
 
 ### 3. Frontend
 
@@ -72,7 +72,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://localhost:8080`, so `VITE_API_URL=/api` works locally. If `VITE_API_URL` is unset, the app calls `http://localhost:8080/api` directly.
+Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://localhost:8080`, so `VITE_API_URL=/api` works locally. If `VITE_API_URL` is unset, the app uses the Render backend URL when the page hostname contains `onrender.com`; otherwise it calls `http://localhost:8080/api`. Vite variables are baked into the frontend at build time. For a separately hosted frontend and backend, set `VITE_API_URL` to the backend API base URL or configure a production `/api` reverse proxy; the Vite dev proxy is not used in production.
 
 ### 4. Create an admin
 
@@ -84,12 +84,21 @@ Registration always creates an `EMPLOYEE`, so nobody can self-assign a privilege
 |---|---|---|---|
 | POST | `/api/auth/register` | Public | Register |
 | POST | `/api/auth/login` | Public | Login, returns a JWT |
-| GET | `/api/leaves?status=&type=` | Employee | List own requests (optional filters) |
-| POST | `/api/leaves` | Employee | Apply for leave |
+| GET | `/api/users/me` | Authenticated | Read own profile |
+| PUT | `/api/users/me` | Authenticated | Update own profile |
+| GET | `/api/leaves?status=&type=` | Authenticated | List own requests (optional filters) |
+| POST | `/api/leaves` | Authenticated | Apply for leave |
 | PUT | `/api/leaves/{id}` | Owner | Update a pending request |
 | DELETE | `/api/leaves/{id}` | Owner | Cancel a pending request (kept with status `CANCELLED`) |
+| GET | `/api/notifications` | Authenticated | List own notifications |
+| GET | `/api/notifications/unread-count` | Authenticated | Get unread notification count |
+| PUT | `/api/notifications/{id}/read` | Authenticated | Mark own notification as read |
+| PUT | `/api/notifications/read-all` | Authenticated | Mark all own notifications as read |
 | GET | `/api/admin/leaves?status=&type=` | Manager, HR, Admin | List requests the caller may review (managers see direct reports only) |
 | PUT | `/api/admin/leaves/{id}/status` | Manager (direct reports), HR, Admin | Approve or reject (`APPROVED` / `REJECTED`) |
+| GET | `/api/admin/users` | Admin | List users |
+| POST | `/api/admin/users` | Admin | Create a user |
+| PUT | `/api/admin/users/{id}` | Admin | Update user details, role, or active status |
 
 Send the token as `Authorization: Bearer <token>`.
 
@@ -100,17 +109,17 @@ Send the token as `Authorization: Bearer <token>`.
 | 200 / 201 / 204 | Success, created, deleted |
 | 400 | Validation error, invalid id, bad enum value |
 | 401 | Missing, invalid or expired token; wrong credentials |
-| 403 | Authenticated but not an admin |
+| 403 | Authenticated but not authorized for the requested admin operation |
 | 404 | Not found, or the request belongs to another user |
 | 409 | Duplicate email, or the request is no longer pending |
 
 ## Security and business rules
 
 - Passwords are stored as BCrypt hashes.
-- Every API except `/api/auth/**` requires a valid JWT. `/api/admin/leaves/**` is open to MANAGER, HR and ADMIN; all other `/api/admin/**` routes require ADMIN. Enforced on the server.
+- Every API except `/api/auth/**` requires a valid JWT. `/api/leaves/**`, `/api/users/me`, and `/api/notifications/**` require authentication but do not impose a role restriction; personal leave operations are scoped to the authenticated user. `/api/admin/leaves/**` is available to MANAGER, HR and ADMIN (managers are scoped to direct reports); other `/api/admin/**` routes require ADMIN. Enforced on the server.
 - Users can only read, edit or cancel their own requests. Someone else's request returns 404, the same as a missing one, so ids cannot be probed.
 - Only `PENDING` requests can be edited, cancelled, approved or rejected.
-- `to_date` must not be before `from_date` (validated in the service; `sql/schema.sql` also declares a CHECK constraint).
+- `to_date` must not be before `from_date` (validated in the service and enforced by the `chk_leave_dates` CHECK constraint in `sql/schema.sql`). The SQL script is for fresh database setup; no migration script for existing databases is included.
 - Logout is client-side: the frontend deletes the token.
 - Cancelling a request keeps the row and sets its status to `CANCELLED`, so history is preserved.
 

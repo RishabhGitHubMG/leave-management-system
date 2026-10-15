@@ -1,10 +1,12 @@
 import { useEffect } from "react";
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import LandingPage from "./pages/LandingPage";
-import AuthPage from "./pages/AuthPage";
-import Dashboard from "./pages/Dashboard";
-import AdminUsers from "./pages/AdminUsers";
+
+const AuthPage = lazy(() => import("./pages/AuthPage"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 
 /**
  * Protected Route Wrapper:
@@ -39,20 +41,22 @@ export default function App() {
   }, []);
 
   return (
-    <Routes>
-      {/* Public Landing Page */}
-      <Route path="/" element={<LandingPage />} />
+    <Suspense fallback={<div role="status">Loading…</div>}>
+      <Routes>
+        {/* Public Landing Page */}
+        <Route path="/" element={<LandingPage />} />
 
-      {/* Guest-only Auth routes */}
-      <Route path="/login" element={<GuestOnly><AuthPage mode="login" /></GuestOnly>} />
-      <Route path="/register" element={<GuestOnly><AuthPage mode="register" /></GuestOnly>} />
+        {/* Guest-only Auth routes */}
+        <Route path="/login" element={<GuestOnly><AuthPage mode="login" /></GuestOnly>} />
+        <Route path="/register" element={<GuestOnly><AuthPage mode="register" /></GuestOnly>} />
 
-      {/* Authenticated Dashboard route */}
-      <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
-      <Route path="/admin/users" element={<Protected><AdminUsers /></Protected>} />
+        {/* Authenticated Dashboard route */}
+        <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+        <Route path="/admin/users" element={<Protected><AdminUsers /></Protected>} />
 
-      {/* Catch-all fallback route */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Catch-all fallback route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }

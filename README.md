@@ -29,13 +29,13 @@ frontend/   React app
 
 - JDK 17 or newer
 - Node.js 18 or newer
-- MySQL 8.0.16 or newer (optional; the backend uses an embedded H2 database by default)
+- MySQL 8.0.16 or newer for Docker and production; H2 is available only through the explicit local profile or tests
 
 ## Setup
 
 ### 1. Local Docker MySQL
 
-The default backend configuration still uses in-memory H2. For a persistent local MySQL 8 database and backend, create an ignored local environment file from the example and replace every placeholder with unique secrets:
+The backend requires explicit database settings and never silently falls back to in-memory H2. For local development, opt into the `local` profile; for the Docker application, use the Compose `docker` profile and its persistent MySQL 8 service. Create an ignored local environment file from the example and replace every placeholder with unique secrets:
 
 ```bash
 cp .env.example .env
@@ -116,13 +116,32 @@ Secrets are read from environment variables. Nothing sensitive is committed.
 
 ```bash
 cd backend
+export SPRING_PROFILES_ACTIVE=local
+export DB_USER=sa
+export DB_PASSWORD=
 export JWT_SECRET="$(openssl rand -base64 32)"
 ./mvnw spring-boot:run
 ```
 
-This mode uses in-memory H2 by default, and its data is lost when the backend stops. For a separately managed MySQL database, set `DB_URL`, `DB_USER`, and `DB_PASSWORD` in the environment. The backend also requires `JWT_SECRET`; `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap inputs and only create an account when none exists.
+The explicit `local` profile uses in-memory H2, and its data is lost when the backend stops. For a separately managed MySQL database, set `DB_URL`, `DB_USER`, and `DB_PASSWORD` in the environment and use the `render` or `docker` profile as appropriate. The backend also requires `JWT_SECRET`; `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap inputs and only create an account when none exists.
 
-The API runs on `http://localhost:8080`. For deployment, configure a persistent database, a stable strong `JWT_SECRET`, and the frontend origin in `CORS_ORIGIN`. The Docker Compose setup in this repository is for local development only; it is not connected to or automatically used by the online deployment. `DDL_AUTO` defaults to `update` outside the Docker profile.
+The API runs on `http://localhost:8080`. The Docker Compose setup is local only; it is not connected to or automatically used by the online deployment. Production uses the explicit `render` profile and requires a persistent database, stable strong `JWT_SECRET`, and frontend origin in `CORS_ORIGIN`; its schema mode is `validate`. No deployment is performed by this repository change.
+
+### Render production configuration (manual, not performed here)
+
+For the online service, configure a persistent MySQL 8 database (Render persistent-disk MySQL service or another managed MySQL provider) and connect over its private/internal hostname when available. Obtain its database name, host, port, username, and password from that provider's dashboard. Set these Render backend environment variables:
+
+- `SPRING_PROFILES_ACTIVE=render`
+- `DB_URL=jdbc:mysql://<private-host>:<port>/<database>?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC`
+- `DB_USER=<database-user>`
+- `DB_PASSWORD=<database-password>`
+- `JWT_SECRET=<unique random secret of at least 32 bytes>`
+- `CORS_ORIGIN=<exact frontend origin>`
+- `DDL_AUTO=validate`
+
+Enter secret values only in the Render Environment settings, never in Git, a Docker image, build arguments, or chat. Leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` unset unless intentionally creating a missing bootstrap account; they do not update an existing account.
+
+Before changing a running service, identify its actual current database and verify a restorable backup. If it has important H2 memory data, export it before any restart or redeploy; it disappears when that process stops. Only after a reviewed backup should an empty new MySQL database be provisioned with `utf8mb4` / `utf8mb4_unicode_ci` and initialized from `backend/src/main/resources/db/migration/V1__initial_schema.sql`. Do not run that fresh-database migration on a non-empty or unidentified schema. The Render profile keeps Flyway disabled and Hibernate at `validate`; it will not create, update, baseline, or reset the schema. Deploy manually only after the database and schema are ready; then inspect Render logs for the Render profile and successful MySQL connection, and verify `DB_URL` does not use `jdbc:h2:mem:`. Local Compose backups do not back up Render data; configure the production database provider's backups plus a verified encrypted off-site export before migration or deployment. This guide does not connect to or modify Render.
 
 ### Existing data and migration
 

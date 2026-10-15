@@ -12,6 +12,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Set;
 
 @Slf4j
@@ -24,12 +25,20 @@ public class EmailService {
     @Value("${spring.mail.username:}")
     private String fromAddress;
 
+    @Value("${spring.mail.password:}")
+    private String password;
+
     @Value("${app.hr-email:}")
     private String hrEmail;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLeaveEvent(LeaveEmailEvent event) {
+        if (fromAddress.isBlank() || password.isBlank()) {
+            log.error("Leave email '{}' not sent: MAIL_USERNAME and MAIL_PASSWORD must both be set",
+                    subject(event));
+            return;
+        }
         String subject = subject(event);
         String body = body(event);
         for (String recipient : recipients(event)) {
@@ -47,7 +56,7 @@ public class EmailService {
 
     private static void addIfPresent(Set<String> recipients, String address) {
         if (address != null && !address.isBlank()) {
-            recipients.add(address.trim());
+            recipients.add(address.trim().toLowerCase(Locale.ROOT));
         }
     }
 
@@ -76,9 +85,7 @@ public class EmailService {
 
     private void send(String to, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();
-        if (fromAddress != null && !fromAddress.isBlank()) {
-            message.setFrom(fromAddress);
-        }
+        message.setFrom(fromAddress);
         message.setTo(to);
         message.setSubject(subject);
         message.setText(body);

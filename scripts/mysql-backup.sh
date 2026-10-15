@@ -53,6 +53,7 @@ test -s "$temporary"
 mv "$temporary" "$backup"
 backup_name=$(basename "$backup")
 (cd /backups && sha256sum "$backup_name" > "${backup_name}.sha256.partial" && mv "${backup_name}.sha256.partial" "${backup_name}.sha256")
+(cd /backups && sha256sum -c "${backup_name}.sha256" >/dev/null)
 find /backups -type f -name 'leave-management-*.sql' -mtime "+${BACKUP_RETENTION_DAYS}" -delete
 find /backups -type f -name 'leave-management-*.sql.sha256' -mtime "+${BACKUP_RETENTION_DAYS}" -delete
 printf 'MySQL backup completed: %s\n' "$backup"

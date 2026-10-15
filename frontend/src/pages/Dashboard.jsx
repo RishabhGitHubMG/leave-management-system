@@ -13,6 +13,7 @@ import SettribeLogo from "../components/SettribeLogo";
 import LeaveForm, { TYPES, label } from "../components/LeaveForm";
 import ConfirmModal from "../components/ConfirmModal";
 import AvatarDropdown from "../components/AvatarDropdown";
+import NotificationBell from "../components/NotificationBell";
 import LeaveBalanceWidget from "../components/LeaveBalanceWidget";
 import ProfileForm from "../components/ProfileForm";
 
@@ -486,8 +487,8 @@ export default function Dashboard() {
             <SettribeLogo height={34} />
           </Link>
 
-          {/* Right side: avatar dropdown only */}
           <div className="nav-actions">
+            <NotificationBell />
             <AvatarDropdown
               user={user}
               darkMode={darkMode}

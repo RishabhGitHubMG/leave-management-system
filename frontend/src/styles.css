@@ -171,6 +171,165 @@ body {
 }
 
 /* --------------------------------------------------------------------------
+   Notification Bell
+   -------------------------------------------------------------------------- */
+.notification-wrapper {
+  position: relative;
+}
+
+.notification-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-surface);
+  color: var(--ink-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.notification-btn:hover, .notification-btn:focus-visible {
+  background: var(--bg-surface-muted);
+  border-color: var(--brand-green);
+  color: var(--ink-primary);
+  outline: none;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 340px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  z-index: 200;
+  animation: dropdown-appear 0.15s cubic-bezier(0.4,0,0.2,1);
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.notification-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.notification-mark-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: var(--brand-green);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notification-mark-all:hover {
+  text-decoration: underline;
+}
+
+.notification-error {
+  padding: 10px 14px;
+  font-size: 0.8125rem;
+  color: #dc2626;
+}
+
+.notification-empty {
+  padding: 24px 14px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+}
+
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 10px 24px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.notification-item:hover, .notification-item:focus-visible {
+  background: var(--bg-surface-muted);
+  outline: none;
+}
+
+.notification-item.is-unread::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--brand-green);
+}
+
+.notification-message {
+  font-size: 0.875rem;
+  color: var(--ink-primary);
+  line-height: 1.4;
+}
+
+.notification-item:not(.is-unread) .notification-message {
+  color: var(--ink-secondary);
+}
+
+.notification-time {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
+/* --------------------------------------------------------------------------
    4. Avatar / Profile Dropdown
    -------------------------------------------------------------------------- */
 .avatar-dropdown-wrapper {

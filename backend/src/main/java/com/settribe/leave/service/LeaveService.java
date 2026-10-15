@@ -31,6 +31,7 @@ public class LeaveService {
 
     private final LeaveRequestRepository leaveRepo;
     private final UserRepository userRepo;
+    private final NotificationService notificationService;
 
     // =========================================================================
     // Employee Workflow Methods
@@ -167,6 +168,7 @@ public class LeaveService {
 
         LeaveRequest updated = leaveRepo.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
+        notificationService.notifyLeaveDecision(updated);
         return LeaveResponse.from(updated);
     }
 

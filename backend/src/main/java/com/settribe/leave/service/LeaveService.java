@@ -215,7 +215,7 @@ public class LeaveService {
      */
     private LeaveRequest findOwnPending(String email, Long id, String action) {
         User user = currentUser(email);
-        LeaveRequest leave = leaveRepo.findByIdAndUserId(id, user.getId())
+        LeaveRequest leave = leaveRepo.findByIdAndUserIdForUpdate(id, user.getId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
         if (leave.getStatus() != LeaveStatus.PENDING) {
             throw new ApiException(HttpStatus.CONFLICT, "Only pending requests can be " + action);

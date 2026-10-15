@@ -123,6 +123,13 @@ function ApproveModal({ open, item, busy, actionError, onConfirm, onCancel }) {
     if (open) setRemarks("");
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === "Escape" && !busy) onCancel(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, busy, onCancel]);
+
   if (!open || !item) return null;
 
   return (
@@ -341,7 +348,7 @@ export default function Dashboard() {
   const [showFilters, setShowFilters]   = useState(false);
 
   const [items, setItems]   = useState([]);
-  const [balanceItems, setBalanceItems] = useState([]);
+  const [summaryItems, setSummaryItems] = useState([]);
   const latestLoad = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState("");
@@ -377,12 +384,12 @@ export default function Dashboard() {
       if (statusFilter) params.status = statusFilter;
       if (typeFilter)   params.type   = typeFilter;
       const { data } = await api.get(base, { params });
-      if (loadId === latestLoad.current) setItems(data);
-      if (base === "/leaves") {
-        const balanceData = statusFilter || typeFilter
-          ? (await api.get("/leaves")).data
-          : data;
-        if (loadId === latestLoad.current) setBalanceItems(balanceData);
+      const summaryData = statusFilter || typeFilter
+        ? (await api.get(base)).data
+        : data;
+      if (loadId === latestLoad.current) {
+        setItems(data);
+        setSummaryItems(summaryData);
       }
     } catch (e) {
       if (loadId === latestLoad.current) setError(errMsg(e));
@@ -467,11 +474,11 @@ export default function Dashboard() {
 
   /* ── KPI metrics ── */
   const metrics = useMemo(() => ({
-    total:    items.length,
-    pending:  items.filter((i) => i.status === "PENDING").length,
-    approved: items.filter((i) => i.status === "APPROVED").length,
-    rejected: items.filter((i) => i.status === "REJECTED" || i.status === "CANCELLED").length,
-  }), [items]);
+    total:    summaryItems.length,
+    pending:  summaryItems.filter((i) => i.status === "PENDING").length,
+    approved: summaryItems.filter((i) => i.status === "APPROVED").length,
+    rejected: summaryItems.filter((i) => i.status === "REJECTED" || i.status === "CANCELLED").length,
+  }), [summaryItems]);
 
   const activeFilterCount = [statusFilter, typeFilter].filter(Boolean).length;
 
@@ -587,7 +594,7 @@ export default function Dashboard() {
         </section>
 
         {/* ── Leave Balance Widget (personal tab only) ── */}
-        {tab === "mine" && <LeaveBalanceWidget items={balanceItems} />}
+        {tab === "mine" && <LeaveBalanceWidget items={summaryItems} />}
 
         {/* ── Admin Tabs ── */}
         {isReviewer && (

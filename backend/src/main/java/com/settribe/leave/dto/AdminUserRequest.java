@@ -12,7 +12,8 @@ import java.time.LocalDate;
 
 public record AdminUserRequest(
         @NotBlank(message = "Name is required")
-        @Size(min = 2, max = 100, message = "Name must be 2 to 100 characters")
+        @Pattern(regexp = "^(?=.*\\S)[a-zA-Z\\u00C0-\\u017F\\s'-]{2,100}$",
+                message = "Name must contain only letters, spaces, hyphens, or apostrophes (2-100 characters)")
         String name,
 
         @NotBlank(message = "Email is required")

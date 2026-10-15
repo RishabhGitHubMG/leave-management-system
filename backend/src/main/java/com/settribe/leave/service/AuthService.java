@@ -8,6 +8,7 @@ import com.settribe.leave.entity.User;
 import com.settribe.leave.exception.ApiException;
 import com.settribe.leave.repository.UserRepository;
 import com.settribe.leave.security.JwtUtil;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -32,6 +34,12 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private String unknownUserHash;
+
+    @PostConstruct
+    void initUnknownUserHash() {
+        unknownUserHash = passwordEncoder.encode(UUID.randomUUID().toString());
+    }
 
     /**
      * Registers a new user with EMPLOYEE role.
@@ -97,8 +105,9 @@ public class AuthService {
             throw invalid;
         }
 
-        User user = userRepository.findByEmail(email).orElseThrow(() -> invalid);
-        if (!user.isActive()) {
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null || !user.isActive()) {
+            passwordEncoder.matches(request.password(), unknownUserHash);
             throw invalid;
         }
 

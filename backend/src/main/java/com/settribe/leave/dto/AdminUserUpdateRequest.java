@@ -12,7 +12,9 @@ import java.time.LocalDate;
  * managerId of 0 or less removes the manager.
  */
 public record AdminUserUpdateRequest(
-        @Size(min = 2, max = 100, message = "Name must be 2 to 100 characters") String name,
+        @Pattern(regexp = "^(?=.*\\S)[a-zA-Z\\u00C0-\\u017F\\s'-]{2,100}$",
+                message = "Name must contain only letters, spaces, hyphens, or apostrophes (2-100 characters)")
+        String name,
         Role role,
         @Size(max = 100) String department,
         @Size(max = 100) String designation,

@@ -102,4 +102,23 @@ describe("Dashboard integration", () => {
       adminRemarks: "Approved after coverage review",
     }));
   });
+
+  it("keeps KPI totals based on the full history when a status filter is applied", async () => {
+    api.get.mockImplementation((path, config = {}) => {
+      if (path !== "/leaves") return Promise.resolve({ data: [] });
+      if (config.params?.status === "PENDING") return Promise.resolve({ data: [pendingLeave] });
+      return Promise.resolve({ data: [approvedLeave, pendingLeave] });
+    });
+    renderDashboard();
+
+    const totalCard = await screen.findByLabelText("Total Requests");
+    await waitFor(() => expect(within(totalCard).getByText("2")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle filters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pending", exact: true }));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/leaves", { params: { status: "PENDING" } }));
+    await waitFor(() => expect(within(screen.getByLabelText("Pending Review")).getByText("1")).toBeTruthy());
+    expect(within(totalCard).getByText("2")).toBeTruthy();
+  });
 });

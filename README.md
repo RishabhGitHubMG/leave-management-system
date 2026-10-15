@@ -202,7 +202,7 @@ Send the token as `Authorization: Bearer <token>`.
 - Every API except `/api/auth/**` requires a valid JWT. `/api/leaves/**`, `/api/users/me`, and `/api/notifications/**` require authentication but do not impose a role restriction; personal leave operations are scoped to the authenticated user. `/api/admin/leaves/**` is available to MANAGER, HR and ADMIN (managers are scoped to direct reports); other `/api/admin/**` routes require ADMIN. Enforced on the server.
 - Users can only read, edit or cancel their own requests. Someone else's request returns 404, the same as a missing one, so ids cannot be probed.
 - Only `PENDING` requests can be edited, cancelled, approved or rejected.
-- `to_date` must not be before `from_date` (validated in the service and enforced by the `chk_leave_dates` CHECK constraint in `sql/schema.sql`). The SQL script is for fresh database setup; no migration script for existing databases is included.
+- `to_date` must not be before `from_date` (validated in the service and enforced by the `chk_leave_dates` CHECK constraint in `backend/src/main/resources/db/migration/V1__initial_schema.sql`). That Flyway script creates the schema for an empty database only; no later migration exists for upgrading an existing database.
 - Logout is client-side: the frontend deletes the token.
 - Cancelling a request keeps the row and sets its status to `CANCELLED`, so history is preserved.
 

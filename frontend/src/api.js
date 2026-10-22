@@ -3,12 +3,12 @@ import axios from "axios";
 /**
  * Determine the backend API base URL:
  * - If running on Render (*.onrender.com), routes to the live deployed Render backend API.
- * - Otherwise defaults to local backend at http://localhost:8080/api.
+ * - Otherwise uses the relative /api path, which the Vite dev server proxies to the local backend.
  * - Can be overridden explicitly by the VITE_API_URL environment variable.
  */
 const defaultUrl = typeof window !== "undefined" && window.location.hostname.includes("onrender.com")
   ? "https://leave-management-system-1-9uph.onrender.com/api"
-  : "http://localhost:8080/api";
+  : "/api";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || defaultUrl,
@@ -65,4 +65,3 @@ export function errMsg(e) {
 
 
 export default api;
-

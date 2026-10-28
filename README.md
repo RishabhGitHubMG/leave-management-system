@@ -125,6 +125,8 @@ export JWT_SECRET="$(openssl rand -base64 32)"
 
 The explicit `local` profile uses in-memory H2, and its data is lost when the backend stops. For a separately managed MySQL database, set `DB_URL`, `DB_USER`, and `DB_PASSWORD` in the environment and use the `render` or `docker` profile as appropriate. The backend also requires `JWT_SECRET`; `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap inputs and only create an account when none exists.
 
+Tokens are HS256-signed with `JWT_SECRET`, use the user id as `sub`, and carry `iss` (`settribe-leave-management`), `iat`, `exp` (24 hours), `jti`, and `role`. To inspect a token locally, log in with `curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"email":"<user>","password":"<password>"}'`, copy the `token` field, and paste it into https://jwt.io. Under signature verification, choose HS256 and enter the exact local `JWT_SECRET` as plain text, leaving "secret base64 encoded" unchecked. Use only local or test accounts and secrets on jwt.io, never production values.
+
 The API runs on `http://localhost:8080`. The Docker Compose setup is local only; it is not connected to or automatically used by the online deployment. Production uses the explicit `render` profile and requires a persistent database, stable strong `JWT_SECRET`, and frontend origin in `CORS_ORIGIN`; its schema mode is `validate`. No deployment is performed by this repository change.
 
 ### Render production configuration (manual, not performed here)

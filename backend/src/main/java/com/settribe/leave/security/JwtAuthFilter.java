@@ -3,11 +3,11 @@ package com.settribe.leave.security;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -26,9 +26,9 @@ import java.io.IOException;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
-    private final UserDetailsService userDetailsService;
+    private final UserDetailsServiceImpl userDetailsService;
 
-    public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
+    public JwtAuthFilter(JwtUtil jwtUtil, UserDetailsServiceImpl userDetailsService) {
         this.jwtUtil = jwtUtil;
         this.userDetailsService = userDetailsService;
     }
@@ -37,30 +37,25 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        // Read the Authorization header
         String header = request.getHeader("Authorization");
 
-        // Check if header exists and starts with "Bearer " prefix
         if (header != null && header.startsWith("Bearer ")
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
-            String token = header.substring(7); // Strip "Bearer " prefix
+            String token = header.substring(7);
 
-            // Validate token signature and expiration
-            if (jwtUtil.isValid(token)) {
-                try {
-                    // Extract user email and load fresh user details from the database.
-                    // Reloading from DB ensures disabled accounts and role updates take effect immediately.
-                    UserDetails user = userDetailsService.loadUserByUsername(jwtUtil.extractEmail(token));
+            try {
+                long userId = jwtUtil.extractUserId(token);
+                // Reloading from DB ensures disabled, locked, and role-changed accounts take effect immediately.
+                UserDetails user = userDetailsService.loadUserById(userId);
 
-                    if (user.isEnabled()) {
-                        UsernamePasswordAuthenticationToken auth =
-                                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(auth);
-                    }
-                } catch (UsernameNotFoundException ignored) {
-                    // If user was deleted from DB, leave unauthenticated -> triggers 401 Unauthorized
+                if (user.isEnabled() && user.isAccountNonLocked()) {
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
                 }
+            } catch (JwtException | IllegalArgumentException | UsernameNotFoundException ignored) {
+                // Invalid token or deleted user: leave unauthenticated so the entry point returns 401
             }
         }
 

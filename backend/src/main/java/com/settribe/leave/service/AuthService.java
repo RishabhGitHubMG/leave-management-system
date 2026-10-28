@@ -137,7 +137,7 @@ public class AuthService {
      * Includes all profile fields for the frontend to display in the dashboard header.
      */
     private AuthResponse toResponse(User user) {
-        String token = jwtUtil.generateToken(user.getEmail(), user.getRole());
+        String token = jwtUtil.generateToken(user.getId(), user.getRole());
         return new AuthResponse(
                 token,
                 user.getId(),

@@ -48,7 +48,18 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - while true; do sh /usr/local/bin/postgres-backup.sh || echo 'PostgreSQL backup failed; it will retry at the next interval' >&2; sleep "$${BACKUP_INTERVAL_SECONDS}"; done
+      - |
+        case "$${BACKUP_INTERVAL_SECONDS}" in
+          ''|*[!0-9]*) echo 'BACKUP_INTERVAL_SECONDS must be a positive integer' >&2; exit 2 ;;
+        esac
+        case "$${BACKUP_INTERVAL_SECONDS}" in
+          *[1-9]*) ;;
+          *) echo 'BACKUP_INTERVAL_SECONDS must be a positive integer' >&2; exit 2 ;;
+        esac
+        while true; do
+          sh /usr/local/bin/postgres-backup.sh || echo 'PostgreSQL backup failed; it will retry at the next interval' >&2
+          sleep "$${BACKUP_INTERVAL_SECONDS}"
+        done
     environment:
       PGHOST: postgres
       PGPORT: "5432"

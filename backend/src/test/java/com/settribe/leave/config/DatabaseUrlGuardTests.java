@@ -11,6 +11,7 @@ import org.springframework.mock.env.MockEnvironment;
 
 class DatabaseUrlGuardTests {
 
+    private static final String POSTGRES_URL = "jdbc:postgresql://127.0.0.1:1/leave";
     private static final String MYSQL_URL = "jdbc:mysql://127.0.0.1:1/leave";
     private static final String H2_URL = "jdbc:h2:mem:leave_check";
     private static final String VALID_SECRET = "a".repeat(32);
@@ -39,10 +40,24 @@ class DatabaseUrlGuardTests {
     }
 
     @Test
-    void acceptsRenderWithValidMysqlAndCredentials() {
-        MockEnvironment environment = environment(MYSQL_URL, VALID_SECRET, true, "render");
+    void acceptsRenderWithValidPostgresAndCredentials() {
+        MockEnvironment environment = environment(POSTGRES_URL, VALID_SECRET, true, "render");
 
         assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
+    }
+
+    @Test
+    void rejectsMysqlUrlOnRender() {
+        MockEnvironment environment = environment(MYSQL_URL, VALID_SECRET, true, "render");
+
+        assertMessage(environment, "DB_URL must be a jdbc:postgresql URL on Render and for the render and docker profiles.");
+    }
+
+    @Test
+    void rejectsMysqlUrlWithDockerProfile() {
+        MockEnvironment environment = environment(MYSQL_URL, VALID_SECRET, false, "docker");
+
+        assertMessage(environment, "DB_URL must be a jdbc:postgresql URL on Render and for the render and docker profiles.");
     }
 
     @Test
@@ -54,7 +69,7 @@ class DatabaseUrlGuardTests {
 
     @Test
     void rejectsMissingJwtSecret() {
-        MockEnvironment environment = environment(MYSQL_URL, "${JWT_SECRET}", true, "render");
+        MockEnvironment environment = environment(POSTGRES_URL, "${JWT_SECRET}", true, "render");
 
         assertMessage(environment, "JWT_SECRET is required: set it to a secret of at least 32 bytes.");
     }
@@ -63,7 +78,7 @@ class DatabaseUrlGuardTests {
     void rejectsJwtSecretShorterThan32BytesWithoutEchoingIt() {
         String shortSecret = "short-dummy-secret-0123456789ab";
         assertEquals(31, shortSecret.getBytes(StandardCharsets.UTF_8).length);
-        MockEnvironment environment = environment(MYSQL_URL, shortSecret, true, "render");
+        MockEnvironment environment = environment(POSTGRES_URL, shortSecret, true, "render");
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> guard.postProcessEnvironment(environment, null));
@@ -74,28 +89,28 @@ class DatabaseUrlGuardTests {
 
     @Test
     void countsUtf8BytesNotCharacters() {
-        MockEnvironment environment = environment(MYSQL_URL, "é".repeat(15), true, "render");
+        MockEnvironment environment = environment(POSTGRES_URL, "é".repeat(15), true, "render");
 
         assertMessage(environment, "JWT_SECRET must be at least 32 UTF-8 bytes.");
     }
 
     @Test
     void acceptsValid32ByteJwtSecret() {
-        MockEnvironment environment = environment(MYSQL_URL, VALID_SECRET, true, "render");
+        MockEnvironment environment = environment(POSTGRES_URL, VALID_SECRET, true, "render");
 
         assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
     }
 
     @Test
-    void rejectsLeadingWhitespaceInMysqlUrl() {
-        MockEnvironment environment = environment(" " + MYSQL_URL, VALID_SECRET, true, "render");
+    void rejectsLeadingWhitespaceInPostgresUrl() {
+        MockEnvironment environment = environment(" " + POSTGRES_URL, VALID_SECRET, true, "render");
 
         assertMessage(environment, "DB_URL must not start or end with whitespace.");
     }
 
     @Test
-    void rejectsTrailingWhitespaceInMysqlUrl() {
-        MockEnvironment environment = environment(MYSQL_URL + " ", VALID_SECRET, true, "render");
+    void rejectsTrailingWhitespaceInPostgresUrl() {
+        MockEnvironment environment = environment(POSTGRES_URL + " ", VALID_SECRET, true, "render");
 
         assertMessage(environment, "DB_URL must not start or end with whitespace.");
     }
@@ -134,7 +149,7 @@ class DatabaseUrlGuardTests {
 
         assertMessage(environment,
                 "DB_URL points to H2, which is allowed only with SPRING_PROFILES_ACTIVE=local or test. "
-                        + "Configure a persistent MySQL DB_URL.");
+                        + "Configure a persistent PostgreSQL DB_URL.");
     }
 
     @Test

@@ -31,7 +31,7 @@ public class Notification {
     @Column(nullable = false, length = 500)
     private String message;
 
-    // Column is named is_read because READ is a reserved word in MySQL
+    // Column is named is_read because READ is a reserved word in SQL databases
     @Column(name = "is_read", nullable = false)
     @Builder.Default
     private boolean read = false;

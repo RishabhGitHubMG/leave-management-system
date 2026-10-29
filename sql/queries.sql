@@ -1,8 +1,8 @@
--- Employee Leave Management System: SQL assessment queries
--- Run with:  mysql -u leaveapp -p < sql/queries.sql
+-- Employee Leave Management System: SQL assessment queries (PostgreSQL 15+)
+-- Run against the application database after Flyway has created the schema:
+--   psql -h 127.0.0.1 -U <user> -d leave_management -f sql/queries.sql
 -- Ids/emails below are examples: change them to match your data.
-
-USE leave_management;
+-- Statements 7 and 8 modify data; run them only against local or test databases.
 
 -- 1. Display all users (password hash deliberately not selected)
 SELECT id, name, email, role, created_at

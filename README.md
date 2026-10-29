@@ -44,7 +44,7 @@ The backend requires explicit database settings and never silently falls back to
 cp .env.example .env
 ```
 
-`.env` must define `POSTGRES_DB`, `DB_USER`, and `DB_PASSWORD`. `DB_USER` becomes the PostgreSQL user that Compose creates; the official PostgreSQL image makes that user a superuser, which is acceptable only for this local stack. Do not reuse the same values anywhere else.
+`.env` must define non-empty `POSTGRES_DB`, `DB_USER`, `DB_PASSWORD`, and `JWT_SECRET`. `DB_USER` becomes the PostgreSQL user that Compose creates; the official PostgreSQL image makes that user a superuser, which is acceptable only for this local stack. Do not reuse the same values anywhere else. Compose checks required values with `${NAME:?...}`; a defined-but-empty shell variable takes precedence over `.env` and produces an error naming the missing setting rather than silently using an empty credential. Unset any intentionally empty shell overrides before starting Compose.
 
 Start the local database and API:
 
@@ -103,7 +103,7 @@ docker compose logs --tail=100 postgres-backup
 docker compose exec postgres-backup df -h /backups
 ```
 
-Each backup is a pair of files: `leave-management-<UTC timestamp>.dump` and `leave-management-<UTC timestamp>.dump.sha256`. The script checks the archive with `pg_restore --list` before it is renamed to its final name, then writes the checksum and verifies it. Retention deletes only old files matching `leave-management-*.dump` and its checksum in `BACKUP_DIR`; it never touches database records or volumes.
+Each backup is a pair of files named `leave-management-<UTC timestamp>-<unique suffix>.dump` and the corresponding `.sha256` file. The script uses exclusive file creation so an existing backup cannot be overwritten, checks the custom-format archive with `pg_restore --list`, writes and verifies its SHA-256 checksum, then publishes the checksum without replacing an existing file. Retention deletes only old files matching `leave-management-*.dump` and their checksums in `BACKUP_DIR`; it never touches database records or volumes.
 
 Use host-level disk encryption for the backup disk. A separate disk protects against failure of the database disk, but not theft, fire, or loss of the whole computer. Periodically copy encrypted backups to a separately administered off-site or object-storage destination and verify that copy. Protect the backup disk and `.env`.
 
@@ -111,7 +111,7 @@ Backups created by the former MySQL setup (`*.sql` files) are not managed by the
 
 #### Test a restore without overwriting data
 
-Restore tests run inside the PostgreSQL container and always go to a **new** database name. The helper refuses to restore into `POSTGRES_DB`, refuses any name that already exists, verifies the checksum first, and never drops a database. It leaves the restored test database for inspection.
+Restore tests run inside the repository's local PostgreSQL 15 Compose container and always go to a **new** database name. The helper refuses remote Docker contexts, other Compose projects, `POSTGRES_DB`, and any name that already exists; it validates the checksum and archive before creating the test database, and never drops a database. A failed restore may leave its newly created test database partially populated; the helper still will not overwrite or remove it. Successful test databases are left for inspection.
 
 ```bash
 backup_dir=$(sed -n 's/^BACKUP_DIR=//p' .env)
@@ -287,5 +287,5 @@ Registration always creates an `EMPLOYEE`, so nobody can self-assign a privilege
 
 ## SQL reference files
 
-- `sql/schema.sql` loads the Flyway V1 file for a manual, empty PostgreSQL database. It is not used by the application and must not be run against a database Flyway manages.
+- From the repository root, `psql -h 127.0.0.1 -U <user> -d leave_management_scratch -v ON_ERROR_STOP=1 -f sql/schema.sql` loads the Flyway V1 file into a manually created, empty PostgreSQL database. Its `\\ir` include is relative to `sql/schema.sql`, so it works from any current directory when invoked with that file path. It is not used by the application and must not be run against a database Flyway manages; Flyway remains the application's sole migration runner.
 - `sql/queries.sql` contains assessment queries for PostgreSQL: `psql -h 127.0.0.1 -U <user> -d leave_management -f sql/queries.sql`. Statements 7 and 8 modify data.

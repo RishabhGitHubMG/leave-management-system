@@ -38,18 +38,45 @@ fi
 
 umask 077
 stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-backup="/backups/leave-management-${stamp}.dump"
-temporary="${backup}.partial"
-checksum_temporary="/backups/$(basename "$backup").sha256.partial"
-trap 'rm -f "$temporary" "$checksum_temporary"' EXIT HUP INT TERM
+temporary=''
+checksum_temporary=''
+published_backup=''
+published_checksum=''
+cleanup() {
+  [ -z "$temporary" ] || rm -f "$temporary"
+  [ -z "$checksum_temporary" ] || rm -f "$checksum_temporary"
+  [ -z "$published_backup" ] || rm -f "$published_backup"
+  [ -z "$published_checksum" ] || rm -f "$published_checksum"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 
+temporary=$(mktemp "/backups/.backup-${stamp}.XXXXXX")
+checksum_temporary=$(mktemp /backups/.checksum.XXXXXX)
+backup="/backups/leave-management-${stamp}-${temporary##*.}.dump"
 pg_dump --format=custom --no-owner --no-privileges --file="$temporary"
 test -s "$temporary"
 pg_restore --list "$temporary" >/dev/null
-mv "$temporary" "$backup"
+if ! ln -T "$temporary" "$backup"; then
+  echo "Could not publish backup without overwriting an existing file" >&2
+  exit 1
+fi
+published_backup=$backup
+rm "$temporary"
+temporary=''
 backup_name=$(basename "$backup")
-(cd /backups && sha256sum "$backup_name" > "${backup_name}.sha256.partial" && mv "${backup_name}.sha256.partial" "${backup_name}.sha256")
+(cd /backups && sha256sum "$backup_name" > "$checksum_temporary")
+(cd /backups && sha256sum -c "$(basename "$checksum_temporary")" >/dev/null)
+if ! ln -T "$checksum_temporary" "${backup}.sha256"; then
+  echo "Could not publish checksum without overwriting an existing file" >&2
+  exit 1
+fi
+published_checksum=${backup}.sha256
+rm "$checksum_temporary"
+checksum_temporary=''
 (cd /backups && sha256sum -c "${backup_name}.sha256" >/dev/null)
+published_backup=''
+published_checksum=''
 find /backups -type f -name 'leave-management-*.dump' -mtime "+${BACKUP_RETENTION_DAYS}" -delete
 find /backups -type f -name 'leave-management-*.dump.sha256' -mtime "+${BACKUP_RETENTION_DAYS}" -delete
 printf 'PostgreSQL backup completed: %s\n' "$backup"

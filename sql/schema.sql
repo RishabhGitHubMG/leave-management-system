@@ -12,4 +12,4 @@
 --   psql -h 127.0.0.1 -U <user> -d leave_management_scratch -v ON_ERROR_STOP=1 -f sql/schema.sql
 
 \set ON_ERROR_STOP on
-\i backend/src/main/resources/db/migration/V1__initial_schema.sql
+\ir ../backend/src/main/resources/db/migration/V1__initial_schema.sql

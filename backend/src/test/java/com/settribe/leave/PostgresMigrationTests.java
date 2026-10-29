@@ -19,20 +19,24 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest(properties = {
-        "app.jwt.secret=test-secret-for-disposable-mysql-migration-tests",
+        "app.jwt.secret=test-secret-for-disposable-postgres-migration-tests",
         "spring.flyway.enabled=true",
         "spring.flyway.clean-disabled=true",
         "spring.jpa.hibernate.ddl-auto=validate"
 })
-@EnabledIfEnvironmentVariable(named = "MYSQL_MIGRATION_CI", matches = "true")
+@EnabledIfEnvironmentVariable(named = "POSTGRES_MIGRATION_CI", matches = "true")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-class MySqlMigrationTests {
+class PostgresMigrationTests {
+
+    private static final String CHECK_VIOLATION = "23514";
+    private static final String UNIQUE_VIOLATION = "23505";
+    private static final String FOREIGN_KEY_VIOLATION = "23503";
 
     @DynamicPropertySource
     static void configure(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> requiredEnv("MYSQL_TEST_URL"));
-        registry.add("spring.datasource.username", () -> requiredEnv("MYSQL_TEST_USER"));
-        registry.add("spring.datasource.password", () -> requiredEnv("MYSQL_TEST_PASSWORD"));
+        registry.add("spring.datasource.url", () -> requiredEnv("POSTGRES_TEST_URL"));
+        registry.add("spring.datasource.username", () -> requiredEnv("POSTGRES_TEST_USER"));
+        registry.add("spring.datasource.password", () -> requiredEnv("POSTGRES_TEST_PASSWORD"));
         registry.add("spring.flyway.enabled", () -> true);
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");
     }
@@ -49,48 +53,44 @@ class MySqlMigrationTests {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class))
                 .isEqualTo(1);
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()"
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema()"
                         + " AND table_name IN ('users', 'leave_requests', 'notifications')",
                 Integer.class)).isEqualTo(3);
         assertThat(jdbc.queryForObject(
-                "SELECT DEFAULT_CHARACTER_SET_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()",
-                String.class)).isEqualTo("utf8mb4");
-        assertThat(jdbc.queryForObject(
-                "SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()",
-                String.class)).isEqualTo("utf8mb4_unicode_ci");
+                "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()",
+                String.class)).isEqualTo("UTF8");
     }
 
     @Test
-    void mysqlRejectsRoleOutsideEntityEnum() {
-        String email = email();
-        assertMysqlError(3819, () -> insertUser(email, "SUPERUSER"));
+    void checkConstraintRejectsRoleOutsideEntityEnum() {
+        assertSqlState(CHECK_VIOLATION, () -> insertUser(email(), "SUPERUSER"));
     }
 
     @Test
-    void mysqlRejectsLeaveStatusOutsideEntityEnum() {
+    void checkConstraintRejectsLeaveStatusOutsideEntityEnum() {
         long userId = insertUser(email(), "EMPLOYEE");
-        assertMysqlError(3819, () -> insertLeave(userId, "PENDING_REVIEW", "2030-01-01", "2030-01-02"));
+        assertSqlState(CHECK_VIOLATION, () -> insertLeave(userId, "PENDING_REVIEW", "2030-01-01", "2030-01-02"));
     }
 
     @Test
-    void mysqlRejectsInvertedLeaveDates() {
+    void checkConstraintRejectsInvertedLeaveDates() {
         long userId = insertUser(email(), "EMPLOYEE");
-        assertMysqlError(3819, () -> insertLeave(userId, "PENDING", "2030-01-02", "2030-01-01"));
+        assertSqlState(CHECK_VIOLATION, () -> insertLeave(userId, "PENDING", "2030-01-02", "2030-01-01"));
     }
 
     @Test
-    void mysqlRejectsDuplicateEmail() {
+    void uniqueConstraintRejectsDuplicateEmail() {
         String email = email();
         insertUser(email, "EMPLOYEE");
-        assertMysqlError(1062, () -> insertUser(email, "EMPLOYEE"));
+        assertSqlState(UNIQUE_VIOLATION, () -> insertUser(email, "EMPLOYEE"));
     }
 
     @Test
-    void mysqlRejectsOrphanedLeaveNotificationAndManagerReferences() {
-        assertMysqlError(1452, () -> insertLeave(Long.MAX_VALUE, "PENDING", "2030-01-01", "2030-01-02"));
-        assertMysqlError(1452, () -> jdbc.update(
+    void foreignKeysRejectOrphanedLeaveNotificationAndManagerReferences() {
+        assertSqlState(FOREIGN_KEY_VIOLATION, () -> insertLeave(Long.MAX_VALUE, "PENDING", "2030-01-01", "2030-01-02"));
+        assertSqlState(FOREIGN_KEY_VIOLATION, () -> jdbc.update(
                 "INSERT INTO notifications (user_id, message) VALUES (?, 'message')", Long.MAX_VALUE));
-        assertMysqlError(1452, () -> jdbc.update(
+        assertSqlState(FOREIGN_KEY_VIOLATION, () -> jdbc.update(
                 "INSERT INTO users (name, email, password, role, manager_id) VALUES ('orphan', ?, 'hash', 'EMPLOYEE', ?)",
                 email(), Long.MAX_VALUE));
     }
@@ -102,15 +102,15 @@ class MySqlMigrationTests {
 
     private void insertLeave(long userId, String status, String fromDate, String toDate) {
         jdbc.update("INSERT INTO leave_requests (user_id, leave_type, from_date, to_date, reason, status)"
-                        + " VALUES (?, 'SICK', ?, ?, 'test', ?)",
+                        + " VALUES (?, 'SICK', CAST(? AS DATE), CAST(? AS DATE), 'test', ?)",
                 userId, fromDate, toDate, status);
     }
 
-    private void assertMysqlError(int expectedErrorCode, Runnable operation) {
+    private void assertSqlState(String expectedSqlState, Runnable operation) {
         DataAccessException failure = assertThrows(DataAccessException.class, operation::run);
         SQLException sqlException = findSqlException(failure);
         assertNotNull(sqlException);
-        assertThat(sqlException.getErrorCode()).isEqualTo(expectedErrorCode);
+        assertThat(sqlException.getSQLState()).isEqualTo(expectedSqlState);
     }
 
     private static SQLException findSqlException(Throwable error) {
@@ -124,12 +124,12 @@ class MySqlMigrationTests {
     private static String requiredEnv(String name) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
-            throw new IllegalStateException(name + " must be set for the MySQL migration test");
+            throw new IllegalStateException(name + " must be set for the PostgreSQL migration test");
         }
         return value;
     }
 
     private static String email() {
-        return UUID.randomUUID() + "@mysql-migration.test";
+        return UUID.randomUUID() + "@postgres-migration.test";
     }
 }

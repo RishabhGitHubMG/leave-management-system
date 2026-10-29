@@ -1,0 +1,46 @@
+name: Backend PostgreSQL migration verification
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-postgres-migration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      POSTGRES_MIGRATION_CI: "true"
+      POSTGRES_TEST_URL: jdbc:postgresql://127.0.0.1:5432/leave_migration_ci
+      POSTGRES_TEST_USER: leave_ci
+      POSTGRES_TEST_PASSWORD: ci-only-test-password
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: leave_migration_ci
+          POSTGRES_USER: leave_ci
+          POSTGRES_PASSWORD: ci-only-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U leave_ci -d leave_migration_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Verify Flyway migration on PostgreSQL
+        working-directory: backend
+        run: ./mvnw --batch-mode -Dtest=PostgresMigrationTests test

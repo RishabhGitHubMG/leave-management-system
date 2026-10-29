@@ -36,7 +36,7 @@ final class SchemaScriptSupport {
 
     static String newUrl(String databaseName) {
         return "jdbc:h2:mem:" + databaseName + "_" + UUID.randomUUID().toString().replace("-", "")
-                + ";MODE=MySQL;DB_CLOSE_DELAY=-1";
+                + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
     }
 
     static void migrate(Connection connection) throws SQLException {

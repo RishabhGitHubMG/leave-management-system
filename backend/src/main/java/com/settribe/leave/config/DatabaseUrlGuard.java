@@ -34,12 +34,12 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
             if (!hasProfile(environment, "local") && !hasProfile(environment, "test")) {
                 throw new IllegalStateException(
                         "DB_URL points to H2, which is allowed only with SPRING_PROFILES_ACTIVE=local or test. "
-                                + "Configure a persistent MySQL DB_URL.");
+                                + "Configure a persistent PostgreSQL DB_URL.");
             }
         }
         if (dockerOrRender) {
-            if (!url.startsWith("jdbc:mysql:")) {
-                throw new IllegalStateException("DB_URL must be a jdbc:mysql URL on Render and for the render and docker profiles.");
+            if (!url.startsWith("jdbc:postgresql:")) {
+                throw new IllegalStateException("DB_URL must be a jdbc:postgresql URL on Render and for the render and docker profiles.");
             }
             requireValue(environment, "spring.datasource.username", "DB_USER");
             requireValue(environment, "spring.datasource.password", "DB_PASSWORD");

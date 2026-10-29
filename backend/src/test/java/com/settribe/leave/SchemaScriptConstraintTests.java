@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// H2 mode cannot verify MySQL collation or version-specific CHECK enforcement.
+// H2 in PostgreSQL mode cannot verify PostgreSQL encoding or server-specific behavior; PostgresMigrationTests covers that.
 class SchemaScriptConstraintTests {
 
     @Test

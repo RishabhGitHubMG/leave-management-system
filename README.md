@@ -2,7 +2,7 @@
 
 A full-stack web app where employees register, apply for leave and track their requests, and admins approve or reject them.
 
-**Stack:** React (Vite, React Router, Axios) · Spring Boot 4 (Java 17, Spring Web, Spring Data JPA, Spring Security) · MySQL 8 · JWT authentication
+**Stack:** React (Vite, React Router, Axios) · Spring Boot 4 (Java 17, Spring Web, Spring Data JPA, Spring Security) · PostgreSQL 15+ with Flyway migrations · JWT authentication
 
 > 📖 **Architecture & Flow Guide**: See [SYSTEM_FLOW.md](./SYSTEM_FLOW.md) for sequence diagrams, end-to-end user workflows, security mechanisms, and codebase breakdown.
 
@@ -21,25 +21,30 @@ A full-stack web app where employees register, apply for leave and track their r
 ## Project structure
 
 ```
-backend/    Spring Boot API (controller -> service -> repository)
+backend/    Spring Boot API (controller -> service -> repository) and Flyway migrations
 frontend/   React app
+scripts/    PostgreSQL backup and restore-test helpers
+sql/        Reference SQL: manual schema loader and assessment queries
 ```
 
 ## Prerequisites
 
-- JDK 17 or newer
+- JDK 17 or newer (or use the bundled `./mvnw` wrapper)
 - Node.js 18 or newer
-- MySQL 8.0.16 or newer for Docker and production; H2 is available only through the explicit local profile or tests
+- Docker with Compose v2 for the local PostgreSQL stack and the backup/restore helpers
+- PostgreSQL 15 or newer for Docker and production. H2 is available only through the explicit `local` profile or tests.
 
 ## Setup
 
-### 1. Local Docker MySQL
+### 1. Local Docker PostgreSQL
 
-The backend requires explicit database settings and never silently falls back to in-memory H2. For local development, opt into the `local` profile; for the Docker application, use the Compose `docker` profile and its persistent MySQL 8 service. Create an ignored local environment file from the example and replace every placeholder with unique secrets:
+The backend requires explicit database settings and never silently falls back to in-memory H2. For local development, opt into the `local` profile (section 2). For the Docker application, use the Compose `docker` profile and its persistent PostgreSQL 15 service. Create an ignored local environment file from the example and replace every placeholder with unique secrets:
 
 ```bash
 cp .env.example .env
 ```
+
+`.env` must define `POSTGRES_DB`, `DB_USER`, and `DB_PASSWORD`. `DB_USER` becomes the PostgreSQL user that Compose creates; the official PostgreSQL image makes that user a superuser, which is acceptable only for this local stack. Do not reuse the same values anywhere else.
 
 Start the local database and API:
 
@@ -49,34 +54,36 @@ docker compose ps
 docker compose logs -f backend
 ```
 
-The Docker profile connects to the Compose service using `DB_URL`, `DB_USER`, and `DB_PASSWORD`, runs the checked-in Flyway migration on an empty database, and then validates the JPA schema. Other profiles keep Flyway disabled and retain the existing `DDL_AUTO` default. MySQL database files live in the project-scoped named volume whose Compose key is `mysql-data`; stopping or recreating containers does not remove it. `restart: unless-stopped` restarts services when Docker starts, provided the Docker engine itself is configured to start after a computer reboot. MySQL initialization variables are applied only when the volume is first created; changing `.env` later does not rotate an existing MySQL user's password.
-
-Stop and restart without removing data:
+Stop and start without removing data:
 
 ```bash
 docker compose stop
 docker compose start
 ```
 
-`docker compose down` removes containers and network but keeps the named volume. **Do not use `docker compose down -v`, `docker volume rm`, or volume-prune commands** if the database contains data.
+`docker compose down` removes containers and the network but keeps the named volume `postgres-data`. **Do not use `docker compose down -v`, `docker volume rm`, or volume-prune commands** if the database contains data.
 
-Check MySQL health and the backend startup logs:
+The backend connects to `jdbc:postgresql://postgres:5432/<POSTGRES_DB>` on the Compose network. The `docker` profile runs Flyway (see [Flyway migrations](#flyway-migrations)) and then validates the JPA schema. The PostgreSQL port is published only on `127.0.0.1:${POSTGRES_HOST_PORT:-5432}`, and the API on `127.0.0.1:${API_HOST_PORT:-8080}`.
+
+PostgreSQL initialization variables (`POSTGRES_DB`, `DB_USER`, `DB_PASSWORD`) apply only when the `postgres-data` volume is first created. Changing `DB_PASSWORD` later does not change an existing database's password. To rotate it, run `ALTER USER` inside the container with a new value, then update `.env` and restart the backend.
+
+Check PostgreSQL health and startup logs:
 
 ```bash
 docker compose ps
-docker compose exec mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqladmin ping --silent -h 127.0.0.1 -uroot'
+docker compose exec postgres sh -c 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 docker compose logs --tail=100 backend
 ```
 
-The application does not currently expose an HTTP health endpoint; the Compose health check covers MySQL only.
+The Compose health check covers PostgreSQL only; the backend waits for it before starting.
 
 #### Automatic backups to a separate disk
 
-The `mysql-backup` service makes a consistent SQL dump immediately after the MySQL schema is ready, then repeats every `BACKUP_INTERVAL_SECONDS` (default 86400). It retains the most recent `BACKUP_RETENTION_DAYS` window (default 30 days). The backup service writes only to `BACKUP_DIR`, a host bind mount—not to the MySQL named volume. Backups contain private account and leave data.
+The `postgres-backup` service writes a custom-format `pg_dump` archive immediately after the PostgreSQL service is healthy and the three application tables exist, then repeats every `BACKUP_INTERVAL_SECONDS` (default 86400). It keeps the most recent `BACKUP_RETENTION_DAYS` window (default 30 days). Backups are written only to `BACKUP_DIR`, a host bind mount, not to the `postgres-data` volume. Backups contain password hashes and personal leave data.
 
-Before starting Compose, mount a separate persistent disk (or a suitably mounted NAS) at the parent of `BACKUP_DIR`. Verify that mount is present and physically separate from the Docker data disk; for Linux hosts, inspect `findmnt -T "$(dirname "$BACKUP_DIR")"` and the Docker data-root mount. Do not create the marker until you have verified the mount, or an ordinary directory on the database disk could be mistaken for the backup destination.
+Before starting Compose, mount a separate persistent disk (or a suitably mounted NAS) at the parent of `BACKUP_DIR`. Verify that the mount is present and physically separate from the Docker data disk. On Linux, inspect `findmnt -T "$(dirname "$BACKUP_DIR")"` and the Docker data-root mount. Do not create the marker until you have verified the mount, or an ordinary directory on the database disk could be mistaken for the backup destination.
 
-Set `BACKUP_DIR` to that mounted directory and set a unique random `BACKUP_VOLUME_MARKER` in `.env`. Create the marker file on the mounted disk using the same value:
+Set `BACKUP_DIR` to that mounted directory and a unique random `BACKUP_VOLUME_MARKER` in `.env`. Create the marker file on the mounted disk using the same value:
 
 ```bash
 backup_dir=$(sed -n 's/^BACKUP_DIR=//p' .env)
@@ -89,26 +96,36 @@ sudo chmod 600 "$backup_dir/.backup-volume-marker"
 docker compose up --build -d
 ```
 
-The marker is bind-mounted read-only into the backup service. If the marker is absent or does not match, scheduled dumps fail closed. Monitor the backup service and disk space:
+The marker is bind-mounted read-only into the backup service. If it is absent or does not match, scheduled dumps fail closed. Monitor the backup service and disk space:
 
 ```bash
-docker compose logs --tail=100 mysql-backup
-docker compose exec mysql-backup df -h /backups
+docker compose logs --tail=100 postgres-backup
+docker compose exec postgres-backup df -h /backups
 ```
 
-Use host-level disk encryption for the separate backup disk. A separate disk protects against failure of the database disk, but not theft, fire, or loss of the whole computer. Periodically copy encrypted backups to a separately administered off-site/object-storage destination and verify that copy. Protect the MySQL backup disk and `.env`; the dump contains password hashes and personal leave data. The retention job deletes only old matching backup files in the configured backup directory, never database records or volumes.
+Each backup is a pair of files: `leave-management-<UTC timestamp>.dump` and `leave-management-<UTC timestamp>.dump.sha256`. The script checks the archive with `pg_restore --list` before it is renamed to its final name, then writes the checksum and verifies it. Retention deletes only old files matching `leave-management-*.dump` and its checksum in `BACKUP_DIR`; it never touches database records or volumes.
+
+Use host-level disk encryption for the backup disk. A separate disk protects against failure of the database disk, but not theft, fire, or loss of the whole computer. Periodically copy encrypted backups to a separately administered off-site or object-storage destination and verify that copy. Protect the backup disk and `.env`.
+
+Backups created by the former MySQL setup (`*.sql` files) are not managed by these scripts and cannot be restored into PostgreSQL. Keep them read-only until they have been migrated or intentionally retired.
 
 #### Test a restore without overwriting data
 
-Choose a unique, unused test-database name. The helper refuses to use the configured application database or any existing schema, creates a separate empty schema, imports the dump, and reports row counts. It deliberately leaves the restored test database intact for inspection; it never drops a database.
+Restore tests run inside the PostgreSQL container and always go to a **new** database name. The helper refuses to restore into `POSTGRES_DB`, refuses any name that already exists, verifies the checksum first, and never drops a database. It leaves the restored test database for inspection.
 
 ```bash
 backup_dir=$(sed -n 's/^BACKUP_DIR=//p' .env)
-backup_file=$(find "$backup_dir" -maxdepth 1 -type f -name 'leave-management-*.sql' -print | sort | tail -n 1)
-sh ./scripts/mysql-restore-test.sh "$backup_file" "restore_test_$(date +%s)"
+backup_file=$(find "$backup_dir" -maxdepth 1 -type f -name 'leave-management-*.dump' -print | sort | tail -n 1)
+sh ./scripts/postgres-restore-test.sh "$backup_file" "restore_test_$(date +%s)"
 ```
 
-Record the reported counts and compare them with the source counts. Before testing persistence, create clearly identified test users, a manager relationship, leave requests in pending and approved/rejected states, and notifications in the local app; record IDs and counts. Then run `docker compose restart backend`, `docker compose restart mysql`, and `docker compose up --force-recreate -d mysql backend mysql-backup`—never add `-v`—and query those same IDs/counts again. These live restart/restore checks must be performed on a machine with Docker running; they have not been verified in this development environment.
+The script prints the restored row counts for `users`, `leave_requests`, and `notifications`. Compare them with the source counts. Remove a test database only after you no longer need it, and only by its exact test name:
+
+```bash
+docker compose exec postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE restore_test_<timestamp>"'
+```
+
+To restore an archive manually into a new database, create the empty database first, then run `pg_restore --no-owner --no-privileges --exit-on-error -d <new_database> <file>.dump`. Never restore into the application database while the backend is running.
 
 ### 2. Backend outside Docker (optional)
 
@@ -119,49 +136,84 @@ cd backend
 export SPRING_PROFILES_ACTIVE=local
 export DB_USER=sa
 export DB_PASSWORD=
+export DDL_AUTO=update
 export JWT_SECRET="$(openssl rand -base64 32)"
 ./mvnw spring-boot:run
 ```
 
-The explicit `local` profile uses in-memory H2, and its data is lost when the backend stops. For a separately managed MySQL database, set `DB_URL`, `DB_USER`, and `DB_PASSWORD` in the environment and use the `render` or `docker` profile as appropriate. The backend also requires `JWT_SECRET`; `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap inputs and only create an account when none exists.
+The explicit `local` profile uses in-memory H2 in PostgreSQL compatibility mode, and its data is lost when the backend stops. Flyway is disabled there, so `DDL_AUTO=update` lets Hibernate create the schema (the backend default is `validate`). To run against a real PostgreSQL database instead, set `SPRING_PROFILES_ACTIVE=docker` (or `render`), `DB_URL=jdbc:postgresql://...`, `DB_USER`, and `DB_PASSWORD`. The backend also requires `JWT_SECRET`; `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap inputs and only create an account when none exists.
 
 Tokens are HS256-signed with `JWT_SECRET`, use the user id as `sub`, and carry `iss` (`settribe-leave-management`), `iat`, `exp` (24 hours), `jti`, and `role`. To inspect a token locally, log in with `curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"email":"<user>","password":"<password>"}'`, copy the `token` field, and paste it into https://jwt.io. Under signature verification, choose HS256 and enter the exact local `JWT_SECRET` as plain text, leaving "secret base64 encoded" unchecked. Use only local or test accounts and secrets on jwt.io, never production values.
 
-The API runs on `http://localhost:8080`. The Docker Compose setup is local only; it is not connected to or automatically used by the online deployment. Production uses the explicit `render` profile and requires a persistent database, stable strong `JWT_SECRET`, and frontend origin in `CORS_ORIGIN`; its schema mode is `validate`. No deployment is performed by this repository change.
+The API runs on `http://localhost:8080`. The Docker Compose setup is local only; it is not connected to or automatically used by the online deployment.
+
+### Running tests
+
+Unit and web tests use in-memory H2 with the `test` profile:
+
+```bash
+cd backend
+./mvnw test
+```
+
+The PostgreSQL migration tests are opt-in because they need a running PostgreSQL 15 database. They run Flyway V1 on that database, validate the Hibernate mapping, and check PostgreSQL constraints. Use a disposable database, never the application database:
+
+```bash
+cd backend
+POSTGRES_MIGRATION_CI=true \
+POSTGRES_TEST_URL=jdbc:postgresql://127.0.0.1:5432/leave_migration_test \
+POSTGRES_TEST_USER=<test-user> \
+POSTGRES_TEST_PASSWORD=<test-password> \
+./mvnw test -Dtest=PostgresMigrationTests
+```
+
+The GitHub Actions workflow `.github/workflows/backend-postgres-migration.yml` runs the same check against a PostgreSQL 15 service container.
+
+### Flyway migrations
+
+- Location: `backend/src/main/resources/db/migration/`. The current baseline is `V1__initial_schema.sql`, which creates `users`, `leave_requests`, and `notifications` with their constraints and indexes.
+- Flyway is enabled only by the `docker` and `render` profiles. It runs at startup before Hibernate validates the mapping. The `local` and `test` profiles do not use Flyway.
+- Flyway records applied versions in its `flyway_schema_history` table. Never edit a migration that has been applied anywhere; Flyway reports a checksum mismatch. Add a new `V2__...sql` file for every schema change.
+- Flyway initializes an **empty** database. It refuses a non-empty schema that has no Flyway history, so do not point the backend at an existing database that was not created by these migrations.
+- `sql/schema.sql` includes this same V1 file for manual, throwaway databases. It is not a second schema source.
 
 ### Render production configuration (manual, not performed here)
 
-For the online service, configure a persistent MySQL 8 database (Render persistent-disk MySQL service or another managed MySQL provider) and connect over its private/internal hostname when available. Obtain its database name, host, port, username, and password from that provider's dashboard. Set these Render backend environment variables:
+Create a PostgreSQL database on Render (or another managed PostgreSQL 15+ provider). Use the **Internal Database URL** when the backend runs on Render in the same region. Render shows the host, port, database name, username, and password on the database's Info page. Set these environment variables on the Render backend service:
 
 - `SPRING_PROFILES_ACTIVE=render`
-- `DB_URL=jdbc:mysql://<private-host>:<port>/<database>?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC`
+- `DB_URL=jdbc:postgresql://<host>:5432/<database>` (use the internal host where possible; if the connection info says SSL is required, append `?sslmode=require`)
 - `DB_USER=<database-user>`
 - `DB_PASSWORD=<database-password>`
 - `JWT_SECRET=<unique random secret of at least 32 bytes>`
 - `CORS_ORIGIN=<exact frontend origin>`
-- `DDL_AUTO=validate`
 
-Enter secret values only in the Render Environment settings, never in Git, a Docker image, build arguments, or chat. Leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` unset unless intentionally creating a missing bootstrap account; they do not update an existing account.
+Do not set `DDL_AUTO`; the `render` profile fixes Hibernate to `validate` itself. Leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` unset unless intentionally creating a missing bootstrap account; they do not update an existing account.
 
-Before changing a running service, identify its actual current database and verify a restorable backup. If it has important H2 memory data, export it before any restart or redeploy; it disappears when that process stops. Only after a reviewed backup should an empty new MySQL database be provisioned with `utf8mb4` / `utf8mb4_unicode_ci` and initialized from `backend/src/main/resources/db/migration/V1__initial_schema.sql`. Do not run that fresh-database migration on a non-empty or unidentified schema. The Render profile keeps Flyway disabled and Hibernate at `validate`; it will not create, update, baseline, or reset the schema. Deploy manually only after the database and schema are ready; then inspect Render logs for the Render profile and successful MySQL connection, and verify `DB_URL` does not use `jdbc:h2:mem:`. Local Compose backups do not back up Render data; configure the production database provider's backups plus a verified encrypted off-site export before migration or deployment. This guide does not connect to or modify Render.
+Enter secret values only in the Render Environment settings, never in Git, a Docker image, build arguments, or chat. Rotate any password that has been pasted into chat or a file.
 
-### Existing data and migration
+Before the first deployment with PostgreSQL:
 
-The repository does not identify the database currently used by the online deployment, and this setup does not inspect, migrate, or replace it. The default H2 database is in-memory, while an externally configured database may persist data elsewhere. Before any data migration, identify the active source, take and verify a backup, restore it into a separate staging MySQL database, then compare user/leave/notification IDs, row counts, foreign keys, and authentication behavior. Do not point the Compose backend at an existing non-empty database: its Flyway migration is for a fresh database, not an existing-schema upgrade.
+1. Confirm the Render PostgreSQL database is empty, or that it already contains a Flyway history created by these migrations. Do not reset a populated database.
+2. Deploy manually only after the database is ready. Startup applies Flyway V1 to an empty database, then Hibernate validates the schema against the entities.
+3. Read the startup logs. A healthy start shows Flyway applying `V1` and no `Schema-validation` errors.
 
-### 3. Frontend
+The `render` profile will not create, reset, or baseline the schema on its own, and the URL guard rejects H2 and any non-PostgreSQL URL on Render. Configure the provider's backups plus a verified, encrypted off-site export before any migration or deployment. Local Compose backups do not cover Render data. This guide does not connect to or modify Render.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+### Troubleshooting
 
-Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://localhost:8080`, so `VITE_API_URL=/api` works locally. If `VITE_API_URL` is unset, the app uses the Render backend URL when the page hostname contains `onrender.com`; otherwise it calls `http://localhost:8080/api`. Vite variables are baked into the frontend at build time. For a separately hosted frontend and backend, set `VITE_API_URL` to the backend API base URL or configure a production `/api` reverse proxy; the Vite dev proxy is not used in production.
-
-### 4. Create an admin
-
-Registration always creates an `EMPLOYEE`, so nobody can self-assign a privileged role. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (step 2) to seed an admin on first start. An existing admin can set other roles (`MANAGER`, `HR`, `ADMIN`) through `PUT /api/admin/users/{id}`.
+| Symptom | Cause and fix |
+|---|---|
+| `DB_URL is required` | The profile did not receive `DB_URL`. Set it in `.env` (Compose) or Render Environment. |
+| `DB_URL must be a jdbc:postgresql URL` | A MySQL or other URL was set for `render`/`docker`. Use `jdbc:postgresql://host:5432/database`. |
+| `DB_URL points to H2, which is not allowed on Render` | H2 is only for the `local` and test profiles. |
+| `Connection refused` in Compose | Check `docker compose ps postgres` and `docker compose logs postgres`. Inside Compose the host is `postgres`, not `localhost`. |
+| `password authentication failed` | `DB_PASSWORD` differs from the password stored in the volume. See the rotation note in section 1, or make sure Render's `DB_USER`/`DB_PASSWORD` match the database's credentials. |
+| `Found non-empty schema(s) without schema history table` | The database already has tables not created by Flyway. Stop; do not add baselining without a reviewed plan. Use an empty database. |
+| `Migration checksum mismatch` | An applied migration file was edited. Restore the original file and add a new `V<n>__...sql` migration instead. |
+| `Schema-validation: missing table` or missing column | Flyway did not run (wrong profile) or the migration is incomplete. Confirm the active profile is `docker` or `render`. |
+| `Backup destination is not the configured mounted backup disk` | The marker file is missing or differs from `BACKUP_VOLUME_MARKER`. Check the disk mount first. |
+| Restore script refuses a name | The test name must be new and contain only letters, digits, and underscores, and cannot be `POSTGRES_DB`. |
 
 ## API
 
@@ -204,7 +256,36 @@ Send the token as `Authorization: Bearer <token>`.
 - Every API except `/api/auth/**` requires a valid JWT. `/api/leaves/**`, `/api/users/me`, and `/api/notifications/**` require authentication but do not impose a role restriction; personal leave operations are scoped to the authenticated user. `/api/admin/leaves/**` is available to MANAGER, HR and ADMIN (managers are scoped to direct reports); other `/api/admin/**` routes require ADMIN. Enforced on the server.
 - Users can only read, edit or cancel their own requests. Someone else's request returns 404, the same as a missing one, so ids cannot be probed.
 - Only `PENDING` requests can be edited, cancelled, approved or rejected.
-- `to_date` must not be before `from_date` (validated in the service and enforced by the `chk_leave_dates` CHECK constraint in `backend/src/main/resources/db/migration/V1__initial_schema.sql`). That Flyway script creates the schema for an empty database only; no later migration exists for upgrading an existing database.
+- `to_date` must not be before `from_date`, validated in the service and enforced by the `chk_leave_dates` CHECK constraint in `backend/src/main/resources/db/migration/V1__initial_schema.sql`.
 - Logout is client-side: the frontend deletes the token.
 - Cancelling a request keeps the row and sets its status to `CANCELLED`, so history is preserved.
 
+### Environment summary
+
+| Setting | Local `local` profile | Docker Compose (`docker`) | Render (`render`) |
+|---|---|---|---|
+| Database | In-memory H2 (PostgreSQL mode), data lost on stop | PostgreSQL 15 container with a persistent volume | Managed PostgreSQL 15+ |
+| `DB_URL` | `jdbc:h2:mem:...` (default in `backend/.env.example`) | `jdbc:postgresql://postgres:5432/<POSTGRES_DB>` (set by Compose) | `jdbc:postgresql://<host>:5432/<database>` |
+| Flyway | Disabled | Enabled | Enabled |
+| Hibernate schema mode | `DDL_AUTO=update` (set `DDL_AUTO` explicitly; default is `validate`) | `validate` | `validate` (fixed by profile) |
+| `CORS_ORIGIN` | Defaults to `*` if unset | Defaults to `http://localhost:5173` in Compose | Required |
+| Backups | None | `postgres-backup` service to `BACKUP_DIR` | Provider backups plus your own verified export |
+
+## Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://localhost:8080`, so `VITE_API_URL=/api` works locally. If `VITE_API_URL` is unset, the app uses the Render backend URL when the page hostname contains `onrender.com`; otherwise it calls `http://localhost:8080/api`. Vite variables are baked into the frontend at build time. For a separately hosted frontend and backend, set `VITE_API_URL` to the backend API base URL or configure a production `/api` reverse proxy; the Vite dev proxy is not used in production.
+
+## Create an admin
+
+Registration always creates an `EMPLOYEE`, so nobody can self-assign a privileged role. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (section 2 or the Compose `.env`) to seed an admin on first start. An existing admin can set other roles (`MANAGER`, `HR`, `ADMIN`) through `PUT /api/admin/users/{id}`.
+
+## SQL reference files
+
+- `sql/schema.sql` loads the Flyway V1 file for a manual, empty PostgreSQL database. It is not used by the application and must not be run against a database Flyway manages.
+- `sql/queries.sql` contains assessment queries for PostgreSQL: `psql -h 127.0.0.1 -U <user> -d leave_management -f sql/queries.sql`. Statements 7 and 8 modify data.

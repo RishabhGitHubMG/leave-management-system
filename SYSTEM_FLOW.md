@@ -27,7 +27,7 @@ The system follows a modern decoupled client-server architecture:
   ├── Controllers (REST Endpoints: /api/auth, /api/users/me, /api/leaves, /api/notifications, /api/admin/*)
   ├── Services (Business logic, validation, transaction boundaries)
   ├── Repositories (Spring Data JPA interfaces)
-  └── Database (MySQL 8; H2 in-memory only under the explicit local or test profile)
+  └── Database (PostgreSQL 15+ schema managed by Flyway; H2 in-memory only under the explicit local or test profile)
 ```
 
 ---

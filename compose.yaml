@@ -1,24 +1,19 @@
 services:
-  mysql:
-    image: mysql:8.0
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --innodb-flush-log-at-trx-commit=1
-      - --sync-binlog=1
+  postgres:
+    image: postgres:15
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env}
-      MYSQL_USER: ${DB_USER:?Set DB_USER in .env}
-      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${DB_USER:?Set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8
     ports:
-      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test:
         - CMD-SHELL
-        - MYSQL_PWD="$${MYSQL_ROOT_PASSWORD}" mysqladmin ping --silent -h 127.0.0.1 -uroot
+        - pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
       interval: 5s
       timeout: 5s
       retries: 20
@@ -30,11 +25,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       DB_USER: ${DB_USER:?Set DB_USER in .env}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       DDL_AUTO: validate
@@ -46,18 +41,20 @@ services:
       - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
     restart: unless-stopped
 
-  mysql-backup:
-    image: mysql:8.0
+  postgres-backup:
+    image: postgres:15
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - while true; do sh /usr/local/bin/mysql-backup.sh || echo 'MySQL backup failed; it will retry at the next interval' >&2; sleep "$${BACKUP_INTERVAL_SECONDS}"; done
+      - while true; do sh /usr/local/bin/postgres-backup.sh || echo 'PostgreSQL backup failed; it will retry at the next interval' >&2; sleep "$${BACKUP_INTERVAL_SECONDS}"; done
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env}
-      DB_USER: ${DB_USER:?Set DB_USER in .env}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      PGUSER: ${DB_USER:?Set DB_USER in .env}
+      PGPASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:?Set BACKUP_RETENTION_DAYS in .env}
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       BACKUP_VOLUME_MARKER: ${BACKUP_VOLUME_MARKER:?Set BACKUP_VOLUME_MARKER in .env}
@@ -75,10 +72,10 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ./scripts/mysql-backup.sh
-        target: /usr/local/bin/mysql-backup.sh
+        source: ./scripts/postgres-backup.sh
+        target: /usr/local/bin/postgres-backup.sh
         read_only: true
     restart: unless-stopped
 
 volumes:
-  mysql-data:
+  postgres-data:

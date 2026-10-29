@@ -84,7 +84,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Runtime migration support is disabled by default and enabled only by the Docker profile. -->
+        <!-- Runtime migration support is enabled by the Docker and Render profiles. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>

@@ -37,6 +37,9 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
                                 + "Configure a persistent PostgreSQL DB_URL.");
             }
         }
+        if (onRender && !hasProfile(environment, "render") && !hasProfile(environment, "admin-account-update")) {
+            throw new IllegalStateException("SPRING_PROFILES_ACTIVE=render is required when running on Render.");
+        }
         if (dockerOrRender) {
             if (!url.startsWith("jdbc:postgresql:")) {
                 throw new IllegalStateException("DB_URL must be a jdbc:postgresql URL on Render and for the render and docker profiles.");

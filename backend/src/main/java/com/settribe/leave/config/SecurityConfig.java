@@ -5,6 +5,7 @@ import com.settribe.leave.security.JwtUtil;
 import com.settribe.leave.security.UserDetailsServiceImpl;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -56,6 +57,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints: Registration and Login
                         .requestMatchers("/api/auth/**").permitAll()
+                        // Public health check for Render; exact path only
+                        .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         // Leave review: managers (direct reports), HR and admins (all employees)
                         .requestMatchers("/api/admin/leaves/**").hasAnyRole("ADMIN", "HR", "MANAGER")
                         // Admin-only endpoints: user and role management

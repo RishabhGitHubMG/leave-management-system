@@ -287,5 +287,5 @@ Registration always creates an `EMPLOYEE`, so nobody can self-assign a privilege
 
 ## SQL reference files
 
-- From the repository root, `psql -h 127.0.0.1 -U <user> -d leave_management_scratch -v ON_ERROR_STOP=1 -f sql/schema.sql` loads the Flyway V1 file into a manually created, empty PostgreSQL database. Its `\\ir` include is relative to `sql/schema.sql`, so it works from any current directory when invoked with that file path. It is not used by the application and must not be run against a database Flyway manages; Flyway remains the application's sole migration runner.
+- From the repository root, `psql -h 127.0.0.1 -U <user> -d leave_management_scratch -v ON_ERROR_STOP=1 -f sql/schema.sql` loads the Flyway V1 file into a manually created, empty PostgreSQL database. Run this command from the repository root; `\\ir` resolves the included migration relative to `sql/schema.sql`. The script is not used by the application and must not be run against a database Flyway manages; Flyway remains the application's sole migration runner.
 - `sql/queries.sql` contains assessment queries for PostgreSQL: `psql -h 127.0.0.1 -U <user> -d leave_management -f sql/queries.sql`. Statements 7 and 8 modify data.

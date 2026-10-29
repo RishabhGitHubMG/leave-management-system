@@ -75,9 +75,12 @@ if [ -z "$postgres_container" ]; then
 fi
 postgres_image=$(docker inspect --format '{{.Config.Image}}' "$postgres_container")
 postgres_service=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$postgres_container")
+postgres_project=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$postgres_container")
 postgres_project_directory=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$postgres_container")
 postgres_compose_files=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' "$postgres_container")
+expected_project=${COMPOSE_PROJECT_NAME:-$(basename "$project_directory")}
 if [ "$postgres_image" != postgres:15 ] || [ "$postgres_service" != postgres ] \
+    || [ "$postgres_project" != "$expected_project" ] \
     || [ "$postgres_project_directory" != "$project_directory" ] \
     || [ "$postgres_compose_files" != "$compose_file" ]; then
   echo "Restore tests require the repository's configured postgres:15 Compose service" >&2

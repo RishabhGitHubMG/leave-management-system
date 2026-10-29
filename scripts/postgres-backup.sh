@@ -14,7 +14,11 @@ case "$BACKUP_RETENTION_DAYS" in
   ''|*[!0-9]*) echo "BACKUP_RETENTION_DAYS must be a non-negative integer" >&2; exit 2 ;;
 esac
 case "$BACKUP_INTERVAL_SECONDS" in
-  ''|*[!0-9]*|0) echo "BACKUP_INTERVAL_SECONDS must be a positive integer" >&2; exit 2 ;;
+  ''|*[!0-9]*) echo "BACKUP_INTERVAL_SECONDS must be a positive integer" >&2; exit 2 ;;
+esac
+case "$BACKUP_INTERVAL_SECONDS" in
+  *[1-9]*) ;;
+  *) echo "BACKUP_INTERVAL_SECONDS must be a positive integer" >&2; exit 2 ;;
 esac
 if [ "$(cat /backups/.backup-volume-marker 2>/dev/null || true)" != "$BACKUP_VOLUME_MARKER" ]; then
   echo "Backup destination is not the configured mounted backup disk" >&2

@@ -323,6 +323,6 @@ frontend/src/
 
 ## 6. Render Deployment
 
-The root `render.yaml` defines one Docker-based Spring Boot web service that builds and serves the Vite frontend from the same origin, with automatic deploys from `main` in Oregon. It does not provision or modify a PostgreSQL database. Enter the existing database connection settings privately in the Render dashboard.
+The root `render.yaml` defines one Docker-based Spring Boot web service that builds and serves the Vite frontend from the same origin, with automatic deploys from `main` in Oregon. It references the existing same-workspace Render Postgres resource `leave-management-db` for its connection string and credentials; no database resource is provisioned. The app converts the referenced PostgreSQL connection string to a credential-free JDBC `DB_URL` before validating it.
 
-The API health check is `GET /api/health`, which checks database availability without returning connection details. Render sets `PORT`; the application uses that value. The `render` Spring profile runs Flyway and validates the schema. Verify the database resource and its migration history before the first deployment; a populated database without this Flyway history must not be reset or baselined casually.
+The API health check is `GET /api/health`, which checks database availability without returning connection details. Render sets `PORT`; the application uses that value. The `render` Spring profile runs Flyway and validates the schema. Verify the database's backup and migration history before the first deployment; a populated database without this Flyway history must not be reset or baselined casually. The database name must remain `leave-management-db` in the same Render workspace as the Blueprint.

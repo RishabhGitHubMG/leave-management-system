@@ -177,28 +177,15 @@ The GitHub Actions workflow `.github/workflows/backend-postgres-migration.yml` r
 - Flyway initializes an **empty** database. It refuses a non-empty schema that has no Flyway history, so do not point the backend at an existing database that was not created by these migrations.
 - `sql/schema.sql` includes this same V1 file for manual, throwaway databases. It is not a second schema source.
 
-### Render production configuration (manual, not performed here)
+### Render Blueprint deployment
 
-Create a PostgreSQL database on Render (or another managed PostgreSQL 15+ provider). Use the **Internal Database URL** when the backend runs on Render in the same region. Render shows the host, port, database name, username, and password on the database's Info page. Set these environment variables on the Render backend service:
+The root `render.yaml` defines one Docker web service that builds the React/Vite frontend and Spring Boot API together. Both target `main` in Oregon and deploy on commits. The backend serves the SPA fallback and `/api` routes on one origin, so no static-site URL, `VITE_API_URL`, CORS wildcard, or SPA rewrite is needed. No PostgreSQL resource is declared: the Blueprint will not provision, change, or delete a database.
 
-- `SPRING_PROFILES_ACTIVE=render`
-- `DB_URL=jdbc:postgresql://<host>:5432/<database>` (use the internal host where possible; if the connection info says SSL is required, append `?sslmode=require`)
-- `DB_USER=<database-user>`
-- `DB_PASSWORD=<database-password>`
-- `JWT_SECRET=<unique random secret of at least 32 bytes>`
-- `CORS_ORIGIN=<exact frontend origin>`
+The Blueprint selects `SPRING_PROFILES_ACTIVE=render` and generates `JWT_SECRET` in Render. During initial Blueprint creation, enter `DB_URL`, `DB_USER`, and the rotated `DB_PASSWORD` privately in Render; their `sync: false` entries are not stored in Git, and later Blueprint syncs do not prompt for them again. The JDBC URL must use the verified internal hostname reachable from Oregon. Render supplies `PORT` and `RENDER_EXTERNAL_URL`; the application uses the former and defaults its same-origin CORS setting to the latter. If you attach a custom domain, set `CORS_ORIGIN` to that exact origin in the Render dashboard.
 
-Do not set `DDL_AUTO`; the `render` profile fixes Hibernate to `validate` itself. Leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` unset unless intentionally creating a missing bootstrap account; they do not update an existing account.
+The previously supplied database name, username, and hostname were not independently verified. Confirm in Render that the existing database is the intended resource, in a compatible region, reachable by the new service, and either empty or already has this Flyway history. Check its backup and migration history before first deployment; do not create a replacement database or reset a populated one. Enter credentials only in Render's private settings. The Blueprint does not inspect Render resources or perform deployment.
 
-Enter secret values only in the Render Environment settings, never in Git, a Docker image, build arguments, or chat. Rotate any password that has been pasted into chat or a file.
-
-Before the first deployment with PostgreSQL:
-
-1. Confirm the Render PostgreSQL database is empty, or that it already contains a Flyway history created by these migrations. Do not reset a populated database.
-2. Deploy manually only after the database is ready. Startup applies Flyway V1 to an empty database, then Hibernate validates the schema against the entities.
-3. Read the startup logs. A healthy start shows Flyway applying `V1` and no `Schema-validation` errors.
-
-The `render` profile will not create, reset, or baseline the schema on its own, and the URL guard rejects H2 and any non-PostgreSQL URL on Render. Configure the provider's backups plus a verified, encrypted off-site export before any migration or deployment. Local Compose backups do not cover Render data. This guide does not connect to or modify Render.
+Render health checks use `GET /api/health`, which returns unavailable if the database cannot answer a simple readiness query. The `render` profile enables Flyway and fixes Hibernate to `validate`; do not set `DDL_AUTO`. `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap settings that only create an account when the email does not already exist. `MAIL_USERNAME`, `MAIL_PASSWORD`, and `HR_EMAIL` are optional; email notifications require SMTP credentials, but these variables are not required for startup. The one-time `admin-account-update` profile is not used by the web service. After the initial setup, pushes to `main` trigger automatic deployments.
 
 ### Troubleshooting
 
@@ -268,7 +255,7 @@ Send the token as `Authorization: Bearer <token>`.
 | `DB_URL` | `jdbc:h2:mem:...` (default in `backend/.env.example`) | `jdbc:postgresql://postgres:5432/<POSTGRES_DB>` (set by Compose) | `jdbc:postgresql://<host>:5432/<database>` |
 | Flyway | Disabled | Enabled | Enabled |
 | Hibernate schema mode | `DDL_AUTO=update` (set `DDL_AUTO` explicitly; default is `validate`) | `validate` | `validate` (fixed by profile) |
-| `CORS_ORIGIN` | Defaults to `*` if unset | Defaults to `http://localhost:5173` in Compose | Required |
+| `CORS_ORIGIN` | Defaults to `*` if unset | Defaults to `http://localhost:5173` in Compose | Defaults to Render's `RENDER_EXTERNAL_URL`; override for a custom domain |
 | Backups | None | `postgres-backup` service to `BACKUP_DIR` | Provider backups plus your own verified export |
 
 ## Frontend
@@ -279,11 +266,11 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://localhost:8080`, so `VITE_API_URL=/api` works locally. If `VITE_API_URL` is unset, the app uses the Render backend URL when the page hostname contains `onrender.com`; otherwise it calls `http://localhost:8080/api`. Vite variables are baked into the frontend at build time. For a separately hosted frontend and backend, set `VITE_API_URL` to the backend API base URL or configure a production `/api` reverse proxy; the Vite dev proxy is not used in production.
+Open `http://localhost:5173`. The dev server proxies `/api` requests to `http://localhost:8080`, so `VITE_API_URL=/api` works locally. The frontend uses the relative `/api` path when `VITE_API_URL` is unset; the Vite proxy applies only in development. The Render Blueprint serves the frontend and API from one origin, so no production `VITE_API_URL` is required. For a separately hosted frontend, set `VITE_API_URL` at build time to the backend API base URL. Vite variables are included in browser-delivered assets and must never contain secrets.
 
 ## Create an admin
 
-Registration always creates an `EMPLOYEE`, so nobody can self-assign a privileged role. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (section 2 or the Compose `.env`) to seed an admin on first start. An existing admin can set other roles (`MANAGER`, `HR`, `ADMIN`) through `PUT /api/admin/users/{id}`.
+Registration always creates an `EMPLOYEE`, so nobody can self-assign a privileged role. For local Compose, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` to seed an admin on first start. In Render, configure them as private service environment variables only if you intentionally want to seed a missing account. Existing administrator credentials are not reset. An existing admin can set other roles (`MANAGER`, `HR`, `ADMIN`) through `PUT /api/admin/users/{id}`.
 
 ## SQL reference files
 

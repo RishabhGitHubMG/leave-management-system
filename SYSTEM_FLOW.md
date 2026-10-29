@@ -321,8 +321,8 @@ frontend/src/
 
 ---
 
-## 6. Live Deployment Environment
+## 6. Render Deployment
 
-* **Live Frontend**: [https://leave-management-system-frontend-8v9l.onrender.com](https://leave-management-system-frontend-8v9l.onrender.com)
-* **Live Backend**: [https://leave-management-system-1-9uph.onrender.com](https://leave-management-system-1-9uph.onrender.com)
-* **Admin account**: set `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the backend to seed one.
+The root `render.yaml` defines one Docker-based Spring Boot web service that builds and serves the Vite frontend from the same origin, with automatic deploys from `main` in Oregon. It does not provision or modify a PostgreSQL database. Enter the existing database connection settings privately in the Render dashboard.
+
+The API health check is `GET /api/health`, which checks database availability without returning connection details. Render sets `PORT`; the application uses that value. The `render` Spring profile runs Flyway and validates the schema. Verify the database resource and its migration history before the first deployment; a populated database without this Flyway history must not be reset or baselined casually.

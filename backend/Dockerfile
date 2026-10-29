@@ -4,12 +4,13 @@ WORKDIR /app
 COPY pom.xml .
 RUN mvn -q dependency:go-offline
 COPY src ./src
-RUN mvn -q clean package -DskipTests
+RUN mvn -q clean package
 
 # Run stage: small Java runtime image
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
+USER 10001:10001
 EXPOSE 8080
 # 60% of the container memory for the heap keeps the app inside Render's 512 MB free instance
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=60", "-jar", "app.jar"]

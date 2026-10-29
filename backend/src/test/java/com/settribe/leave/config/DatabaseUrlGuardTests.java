@@ -47,6 +47,20 @@ class DatabaseUrlGuardTests {
     }
 
     @Test
+    void rejectsRenderWhenProductionProfileIsMissing() {
+        MockEnvironment environment = environment(POSTGRES_URL, VALID_SECRET, true, "local");
+
+        assertMessage(environment, "SPRING_PROFILES_ACTIVE=render is required when running on Render.");
+    }
+
+    @Test
+    void allowsRenderAdminAccountUpdateProfileWithPostgres() {
+        MockEnvironment environment = environment(POSTGRES_URL, VALID_SECRET, true, "admin-account-update");
+
+        assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
+    }
+
+    @Test
     void rejectsMysqlUrlOnRender() {
         MockEnvironment environment = environment(MYSQL_URL, VALID_SECRET, true, "render");
 

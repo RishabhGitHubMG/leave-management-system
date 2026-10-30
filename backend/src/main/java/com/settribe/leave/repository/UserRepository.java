@@ -41,5 +41,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByManager_Id(Long managerId);
 
+    long countByManager_IdAndActiveTrue(Long managerId);
+
     List<User> findByRoleInAndActiveTrue(Collection<Role> roles);
+
+    List<User> findByRoleAndActiveTrue(Role role);
 }

@@ -1,6 +1,7 @@
 package com.settribe.leave;
 
 import com.settribe.leave.dto.LeaveRequestDto;
+import com.settribe.leave.dto.NotificationPreferenceDto;
 import com.settribe.leave.dto.NotificationResponse;
 import com.settribe.leave.dto.StatusUpdateRequest;
 import com.settribe.leave.entity.LeaveStatus;
@@ -9,6 +10,7 @@ import com.settribe.leave.entity.Role;
 import com.settribe.leave.entity.User;
 import com.settribe.leave.exception.ApiException;
 import com.settribe.leave.repository.UserRepository;
+import com.settribe.leave.service.AuditService;
 import com.settribe.leave.service.LeaveService;
 import com.settribe.leave.service.NotificationService;
 import org.junit.jupiter.api.Test;
@@ -35,10 +37,44 @@ class NotificationFlowTests {
     private LeaveService leaveService;
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private NotificationService notificationService;
 
     @Autowired
     private UserRepository userRepo;
+
+    @Test
+    void preferencesArePrivateAndUseSafeDefaults() {
+        String firstEmail = createUser(Role.EMPLOYEE);
+        String secondEmail = createUser(Role.EMPLOYEE);
+
+        NotificationPreferenceDto defaults = notificationService.preferences(firstEmail);
+        assertThat(defaults.inAppEnabled()).isTrue();
+        assertThat(defaults.emailEnabled()).isTrue();
+        assertThat(defaults.slackEnabled()).isFalse();
+
+        NotificationPreferenceDto updated = notificationService.updatePreferences(firstEmail,
+                new NotificationPreferenceDto(false, false, false, false, false, false, false));
+
+        assertThat(updated.inAppEnabled()).isFalse();
+        assertThat(notificationService.preferences(secondEmail).emailEnabled()).isTrue();
+    }
+
+    @Test
+    void leaveSubmissionAndDecisionAreAuditedToTheActor() {
+        String employeeEmail = createUser(Role.EMPLOYEE);
+        String adminEmail = createUser(Role.ADMIN);
+        Long leaveId = submitLeave(employeeEmail, LeaveType.ANNUAL);
+
+        leaveService.updateStatus(adminEmail, leaveId, new StatusUpdateRequest(LeaveStatus.APPROVED, null));
+
+        assertThat(auditService.search(employeeEmail, "LEAVE_SUBMITTED", "LeaveRequest", null, null,
+                PageRequest.of(0, 10)).getContent()).hasSize(1);
+        assertThat(auditService.search(adminEmail, "LEAVE_APPROVED", "LeaveRequest", null, null,
+                PageRequest.of(0, 10)).getContent()).hasSize(1);
+    }
 
     @Test
     void approvalCreatesUnreadNotificationForApplicant() {

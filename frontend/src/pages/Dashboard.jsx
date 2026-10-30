@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, X, CalendarDays, Clock, CheckCircle2, XCircle,
   Filter, ChevronDown, AlertTriangle, Info, RefreshCw,
@@ -338,9 +338,11 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const isAdmin = user?.role === "ADMIN";
   const isReviewer = ["ADMIN", "HR", "MANAGER"].includes(user?.role);
+  const [searchParams] = useSearchParams();
+  const requestId = searchParams.get("requestId");
 
   /* ── State ── */
-  const [tab, setTab] = useState("mine");
+  const [tab, setTab] = useState(() => requestId && isReviewer ? "all" : "mine");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter]     = useState("");
   const [searchQuery, setSearchQuery]   = useState("");
@@ -399,6 +401,15 @@ export default function Dashboard() {
   }, [base, statusFilter, typeFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!requestId || loading) return;
+    const requestCard = document.getElementById(`leave-request-${requestId}`);
+    if (requestCard) {
+      requestCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      requestCard.focus({ preventScroll: true });
+    }
+  }, [requestId, items, loading]);
 
   /* ── Action runner ── */
   const run = async (fn, msg) => {
@@ -798,7 +809,7 @@ export default function Dashboard() {
               const isSingle = l.fromDate === l.toDate;
 
               return (
-                <article key={l.id} className="request-card">
+                <article id={`leave-request-${l.id}`} key={l.id} className="request-card" tabIndex={-1}>
                   {/* ── Left: main info ── */}
                   <div className="request-main">
                     {/* Title row */}

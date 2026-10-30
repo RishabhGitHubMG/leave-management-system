@@ -93,6 +93,18 @@ public class NotificationService {
         return NotificationPreferenceDto.from(preferenceRepo.save(preference));
     }
 
+    @Transactional(readOnly = true)
+    public boolean remindersEnabled(User user) {
+        return preferenceRepo.findByUserId(user.getId())
+                .map(NotificationPreference::isApprovalRemindersEnabled).orElse(true);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean digestEnabled(User user) {
+        return preferenceRepo.findByUserId(user.getId())
+                .map(NotificationPreference::isDailyDigestEnabled).orElse(true);
+    }
+
     @Transactional
     public void notifyLeaveSubmission(LeaveRequest leave) {
         User applicant = leave.getUser();

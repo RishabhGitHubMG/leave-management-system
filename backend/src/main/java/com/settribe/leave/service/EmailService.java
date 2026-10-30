@@ -65,6 +65,27 @@ public class EmailService {
         });
     }
 
+    @Transactional
+    public void enqueueMessage(String recipient, String eventKey, String subject, String body) {
+        if (!isConfigured() || recipient == null || recipient.isBlank() || outboxRepo.existsByEventKey(eventKey)) {
+            return;
+        }
+        String normalized = recipient.trim().toLowerCase(Locale.ROOT);
+        var user = userRepo.findByEmail(normalized).orElse(null);
+        NotificationPreference preferences = user == null ? null
+                : preferenceRepo.findByUserId(user.getId()).orElse(null);
+        if (preferences != null && !preferences.isEmailEnabled()) {
+            return;
+        }
+        outboxRepo.save(EmailOutbox.builder()
+                .eventKey(eventKey)
+                .recipient(recipient.trim())
+                .subject(subject)
+                .body(body)
+                .availableAt(LocalDateTime.now())
+                .build());
+    }
+
     private void addIfEnabled(Map<String, String> recipients, String address) {
         if (address == null || address.isBlank()) {
             return;

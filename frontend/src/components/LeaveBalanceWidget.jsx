@@ -1,152 +1,51 @@
 import React from "react";
 import { CalendarDays, HeartPulse, Umbrella, ClipboardList } from "lucide-react";
 
-/**
- * Leave balance configuration:
- * Maps leave type → { label, total quota, icon, bar color }
- *
- * The `total` is a typical enterprise allocation. The actual remaining
- * count is derived from approved leaves consumed from the server data.
- */
-const BALANCE_CONFIG = [
-  {
-    type: "ANNUAL",
-    label: "Annual Leave",
-    total: 18,
-    icon: CalendarDays,
-    color: "#16a34a",
-    bg: "rgba(22,163,74,0.1)",
-  },
-  {
-    type: "SICK",
-    label: "Sick Leave",
-    total: 10,
-    icon: HeartPulse,
-    color: "#0891b2",
-    bg: "rgba(8,145,178,0.1)",
-  },
-  {
-    type: "CASUAL",
-    label: "Casual Leave",
-    total: 8,
-    icon: Umbrella,
-    color: "#7c3aed",
-    bg: "rgba(124,58,237,0.1)",
-  },
-  {
-    type: "UNPAID",
-    label: "Unpaid Leave",
-    total: null, // unlimited
-    icon: ClipboardList,
-    color: "#b45309",
-    bg: "rgba(180,83,9,0.1)",
-  },
+const LEAVE_TYPES = [
+  { type: "ANNUAL", label: "Annual Leave", icon: CalendarDays, color: "#16a34a", bg: "rgba(22,163,74,0.1)" },
+  { type: "SICK", label: "Sick Leave", icon: HeartPulse, color: "#0891b2", bg: "rgba(8,145,178,0.1)" },
+  { type: "CASUAL", label: "Casual Leave", icon: Umbrella, color: "#7c3aed", bg: "rgba(124,58,237,0.1)" },
+  { type: "UNPAID", label: "Unpaid Leave", icon: ClipboardList, color: "#b45309", bg: "rgba(180,83,9,0.1)" },
 ];
 
-/**
- * Counts how many days of each approved leave type an employee has consumed.
- *
- * @param {Array}  items       - The user's leave request list from the API
- * @returns {Object}           - Map of leaveType → consumedDays
- */
-function computeConsumed(items) {
-  const result = {};
+function computeApprovedDays(items) {
+  const totals = {};
   for (const item of items) {
     if (item.status !== "APPROVED") continue;
-    const from = new Date(item.fromDate);
-    const to = new Date(item.toDate);
-    const days = Math.max(1, Math.round((to - from) / 86400000) + 1);
-    result[item.leaveType] = (result[item.leaveType] ?? 0) + days;
+    const days = Math.max(1, Math.round((Date.parse(item.toDate) - Date.parse(item.fromDate)) / 86400000) + 1);
+    totals[item.leaveType] = (totals[item.leaveType] ?? 0) + days;
   }
-  return result;
+  return totals;
 }
 
-/**
- * LeaveBalanceWidget
- *
- * Displays a card with per-leave-type progress bars showing:
- *   Remaining = Total - Consumed (from approved leaves)
- *
- * @param {{ items: Array }} props - items: the user's leave requests
- */
 export default function LeaveBalanceWidget({ items = [] }) {
-  const consumed = computeConsumed(items);
+  const totals = computeApprovedDays(items);
 
   return (
-    <div className="balance-card" aria-label="Estimated Leave Balance">
+    <section className="balance-card" aria-label="Approved leave usage">
       <div className="balance-title">
         <CalendarDays size={17} color="var(--brand-green)" />
-        Estimated Leave Balance
+        Approved leave usage
       </div>
-      <p className="muted">Illustrative allowances only; balances are not enforced by the server.</p>
-
+      <p className="muted">Balance entitlements are unavailable until your organization configures a leave policy. Usage uses inclusive calendar days.</p>
       <div className="balance-grid">
-        {BALANCE_CONFIG.map(({ type, label, total, icon: Icon, color, bg }) => {
-          const used = consumed[type] ?? 0;
-          const isUnlimited = total === null;
-          const remaining = isUnlimited ? null : Math.max(0, total - used);
-          const pct = isUnlimited ? 100 : total === 0 ? 0 : Math.min(100, (remaining / total) * 100);
-
-          return (
-            <div key={type} className="balance-item" aria-label={`${label} balance`}>
-              <div className="balance-item-header">
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <div
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: "6px",
-                      background: bg,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Icon size={13} color={color} />
-                  </div>
-                  <span className="balance-label">{label}</span>
+        {LEAVE_TYPES.map(({ type, label, icon: Icon, color, bg }) => (
+          <div key={type} className="balance-item" aria-label={`${label} approved usage`}>
+            <div className="balance-item-header">
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 26, height: 26, borderRadius: 6, background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon size={13} color={color} />
                 </div>
-
-                <span className="balance-count" style={{ color }}>
-                  {isUnlimited ? (
-                    <span style={{ fontSize: "0.75rem", color: "var(--ink-muted)" }}>Unlimited</span>
-                  ) : (
-                    `${remaining}/${total}`
-                  )}
-                </span>
+                <span className="balance-label">{label}</span>
               </div>
-
-              {/* Progress Bar */}
-              <div
-                className="balance-bar-track"
-                role="progressbar"
-                aria-valuenow={pct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={`${remaining ?? "∞"} days remaining`}
-              >
-                <div
-                  className="balance-bar-fill"
-                  style={{
-                    width: `${pct}%`,
-                    background: pct < 25
-                      ? "linear-gradient(90deg, #ef4444, #f97316)"
-                      : pct < 50
-                      ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
-                      : `linear-gradient(90deg, ${color}, ${color}aa)`,
-                  }}
-                />
-              </div>
-
-              <div className="balance-remaining">
-                {isUnlimited
-                  ? `${used} day${used !== 1 ? "s" : ""} taken`
-                  : `${used} day${used !== 1 ? "s" : ""} used · ${remaining} remaining`}
-              </div>
+              <span className="balance-count" style={{ color }}>{totals[type] ?? 0}</span>
             </div>
-          );
-        })}
+            <div className="balance-remaining">
+              {totals[type] ?? 0} approved day{totals[type] === 1 ? "" : "s"}
+            </div>
+          </div>
+        ))}
       </div>
-    </div>
+    </section>
   );
 }

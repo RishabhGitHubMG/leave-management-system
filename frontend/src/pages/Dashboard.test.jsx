@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe("Dashboard integration", () => {
-  it("keeps estimated balances based on the full history when request filters change", async () => {
+  it("keeps approved usage based on full history when request filters change", async () => {
     api.get.mockImplementation((path, config = {}) => {
       if (path !== "/leaves") return Promise.resolve({ data: [] });
       if (config.params?.status === "PENDING") return Promise.resolve({ data: [pendingLeave] });
@@ -65,15 +65,15 @@ describe("Dashboard integration", () => {
     });
     renderDashboard();
 
-    const annualBalance = await screen.findByLabelText("Annual Leave balance");
-    expect(within(annualBalance).getByText("4 days used · 14 remaining")).toBeTruthy();
+    const annualBalance = await screen.findByLabelText("Annual Leave approved usage");
+    expect(within(annualBalance).getByText("4 approved days")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle filters" }));
     fireEvent.click(screen.getByRole("button", { name: "Pending", exact: true }));
 
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/leaves", { params: { status: "PENDING" } }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/leaves"));
-    expect(within(annualBalance).getByText("4 days used · 14 remaining")).toBeTruthy();
+    expect(within(annualBalance).getByText("4 approved days")).toBeTruthy();
   });
 
   it("sends optional approval remarks to the backend", async () => {

@@ -16,12 +16,12 @@ public interface EmailOutboxRepository extends JpaRepository<EmailOutbox, Long> 
     List<EmailOutbox> findTop20ByStatusInAndAvailableAtBeforeOrderByIdAsc(List<String> statuses,
                                                                           LocalDateTime availableAt);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE EmailOutbox e SET e.status = 'PROCESSING', e.attempts = e.attempts + 1, "
             + "e.availableAt = :leaseUntil WHERE e.id = :id AND e.status IN ('PENDING', 'RETRY')")
     int claim(@Param("id") Long id, @Param("leaseUntil") LocalDateTime leaseUntil);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE EmailOutbox e SET e.status = 'RETRY', e.availableAt = :now "
             + "WHERE e.status = 'PROCESSING' AND e.availableAt < :staleBefore")
     int releaseStale(@Param("now") LocalDateTime now, @Param("staleBefore") LocalDateTime staleBefore);

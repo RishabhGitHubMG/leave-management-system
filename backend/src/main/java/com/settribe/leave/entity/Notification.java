@@ -28,8 +28,17 @@ public class Notification {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(nullable = false, length = 120)
+    private String title;
+
     @Column(nullable = false, length = 500)
     private String message;
+
+    @Column(name = "related_path", length = 300)
+    private String relatedPath;
+
+    @Column(name = "event_key", length = 160, unique = true)
+    private String eventKey;
 
     // Column is named is_read because READ is a reserved word in SQL databases
     @Column(name = "is_read", nullable = false)

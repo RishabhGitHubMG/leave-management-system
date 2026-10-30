@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, CheckCheck } from "lucide-react";
+import { Bell, CheckCheck, ChevronDown, Settings } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import api, { errMsg } from "../api";
 
 const POLL_INTERVAL_MS = 60000;
@@ -24,7 +25,10 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const wrapperRef = useRef(null);
+  const navigate = useNavigate();
 
   const refreshCount = useCallback(async () => {
     try {
@@ -35,12 +39,14 @@ export default function NotificationBell() {
     }
   }, []);
 
-  const loadItems = useCallback(async () => {
+  const loadItems = useCallback(async (requestedPage = 0) => {
     setLoading(true);
     setError("");
     try {
-      const { data } = await api.get("/notifications");
-      setItems(data);
+      const { data } = await api.get("/notifications", { params: { page: requestedPage, size: 20 } });
+      setItems((current) => requestedPage === 0 ? data.content : [...current, ...data.content]);
+      setPage(requestedPage);
+      setHasMore(!data.last);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -76,7 +82,7 @@ export default function NotificationBell() {
 
   const syncAfterFailure = (e) => {
     setError(errMsg(e));
-    loadItems();
+    loadItems(0);
     refreshCount();
   };
 
@@ -144,14 +150,32 @@ export default function NotificationBell() {
                 <button
                   type="button"
                   className={`notification-item ${n.read ? "" : "is-unread"}`}
-                  onClick={() => markRead(n)}
+                  onClick={() => {
+                    markRead(n);
+                    if (n.relatedPath) {
+                      setOpen(false);
+                      navigate(n.relatedPath);
+                    }
+                  }}
                 >
-                  <span className="notification-message">{n.message}</span>
+                  <span className="notification-message">
+                    <strong>{n.title || "Notification"}</strong>
+                    <span>{n.message}</span>
+                  </span>
                   <span className="notification-time">{fmtTime(n.createdAt)}</span>
                 </button>
               </li>
             ))}
           </ul>
+          {loading && <div className="notification-empty" role="status">Loading notifications…</div>}
+          {!loading && hasMore && (
+            <button type="button" className="notification-mark-all" onClick={() => loadItems(page + 1)}>
+              <ChevronDown size={13} /> Load more
+            </button>
+          )}
+          <Link to="/settings/notifications" className="notification-mark-all" onClick={() => setOpen(false)}>
+            <Settings size={13} /> Notification preferences
+          </Link>
         </div>
       )}
     </div>

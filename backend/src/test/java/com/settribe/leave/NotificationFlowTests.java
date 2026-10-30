@@ -13,6 +13,7 @@ import com.settribe.leave.service.LeaveService;
 import com.settribe.leave.service.NotificationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -48,7 +49,7 @@ class NotificationFlowTests {
         leaveService.updateStatus(adminEmail, leaveId, new StatusUpdateRequest(LeaveStatus.APPROVED, null));
 
         assertThat(notificationService.unreadCount(employeeEmail).count()).isEqualTo(1);
-        NotificationResponse notification = notificationService.listMine(employeeEmail).get(0);
+        NotificationResponse notification = notificationService.listMine(employeeEmail, PageRequest.of(0, 20)).getContent().get(0);
         assertThat(notification.message()).contains("annual leave").contains("approved");
         assertThat(notification.read()).isFalse();
     }
@@ -62,7 +63,7 @@ class NotificationFlowTests {
         leaveService.updateStatus(adminEmail, leaveId,
                 new StatusUpdateRequest(LeaveStatus.REJECTED, "Insufficient cover this week"));
 
-        assertThat(notificationService.listMine(employeeEmail).get(0).message()).contains("rejected");
+        assertThat(notificationService.listMine(employeeEmail, PageRequest.of(0, 20)).getContent().get(0).message()).contains("rejected");
     }
 
     @Test
@@ -71,7 +72,7 @@ class NotificationFlowTests {
         String adminEmail = createUser(Role.ADMIN);
         Long leaveId = submitLeave(employeeEmail, LeaveType.CASUAL);
         leaveService.updateStatus(adminEmail, leaveId, new StatusUpdateRequest(LeaveStatus.APPROVED, null));
-        Long notificationId = notificationService.listMine(employeeEmail).get(0).id();
+        Long notificationId = notificationService.listMine(employeeEmail, PageRequest.of(0, 20)).getContent().get(0).id();
 
         NotificationResponse marked = notificationService.markRead(employeeEmail, notificationId);
 
@@ -101,7 +102,7 @@ class NotificationFlowTests {
         String adminEmail = createUser(Role.ADMIN);
         Long leaveId = submitLeave(employeeEmail, LeaveType.ANNUAL);
         leaveService.updateStatus(adminEmail, leaveId, new StatusUpdateRequest(LeaveStatus.APPROVED, null));
-        Long notificationId = notificationService.listMine(employeeEmail).get(0).id();
+        Long notificationId = notificationService.listMine(employeeEmail, PageRequest.of(0, 20)).getContent().get(0).id();
 
         assertThatThrownBy(() -> notificationService.markRead(otherEmail, notificationId))
                 .isInstanceOf(ApiException.class)

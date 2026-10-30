@@ -26,6 +26,7 @@ public class UserService {
 
     private final UserRepository userRepo;
     private final PasswordEncoder passwordEncoder;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     public List<UserResponse> listAll() {
@@ -46,11 +47,13 @@ public class UserService {
         if (request.phoneNumber() != null) {
             user.setPhoneNumber(request.phoneNumber().trim());
         }
+        auditService.record(email, "USER_PROFILE_UPDATED", "User", user.getId().toString(),
+                "User profile fields updated", "SUCCESS");
         return UserResponse.from(user);
     }
 
     @Transactional
-    public UserResponse create(AdminUserRequest request) {
+    public UserResponse create(String adminEmail, AdminUserRequest request) {
         String email = request.email().trim().toLowerCase();
         if (userRepo.existsByEmail(email)) {
             throw new ApiException(HttpStatus.CONFLICT, "Email is already registered");
@@ -73,7 +76,10 @@ public class UserService {
                 .employmentType(request.employmentType())
                 .build();
         user.setManager(resolveManager(null, request.managerId()));
-        return UserResponse.from(userRepo.save(user));
+        User saved = userRepo.save(user);
+        auditService.record(adminEmail, "USER_CREATED", "User", saved.getId().toString(),
+                "User account created with role " + saved.getRole(), "SUCCESS");
+        return UserResponse.from(saved);
     }
 
     @Transactional
@@ -82,6 +88,8 @@ public class UserService {
         User user = userRepo.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
         boolean self = actor.getId().equals(user.getId());
+        Role previousRole = user.getRole();
+        boolean previousActive = user.isActive();
 
         if (request.role() != null) {
             if (self && request.role() != Role.ADMIN) {
@@ -122,6 +130,16 @@ public class UserService {
         if (request.employmentType() != null) {
             user.setEmploymentType(request.employmentType());
         }
+        if (previousRole != user.getRole()) {
+            auditService.record(adminEmail, "ROLE_CHANGED", "User", user.getId().toString(),
+                    "Role changed from " + previousRole + " to " + user.getRole(), "SUCCESS");
+        }
+        if (previousActive != user.isActive()) {
+            auditService.record(adminEmail, "USER_ACCOUNT_STATUS_CHANGED", "User", user.getId().toString(),
+                    user.isActive() ? "User account activated" : "User account deactivated", "SUCCESS");
+        }
+        auditService.record(adminEmail, "USER_UPDATED", "User", user.getId().toString(),
+                "Administrative user fields updated", "SUCCESS");
         return UserResponse.from(user);
     }
 

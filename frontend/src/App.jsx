@@ -7,6 +7,7 @@ import LandingPage from "./pages/LandingPage";
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const NotificationPreferences = lazy(() => import("./pages/NotificationPreferences"));
 
 /**
  * Protected Route Wrapper:
@@ -53,6 +54,7 @@ export default function App() {
         {/* Authenticated Dashboard route */}
         <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
         <Route path="/admin/users" element={<Protected><AdminUsers /></Protected>} />
+        <Route path="/settings/notifications" element={<Protected><NotificationPreferences /></Protected>} />
 
         {/* Catch-all fallback route */}
         <Route path="*" element={<Navigate to="/" replace />} />

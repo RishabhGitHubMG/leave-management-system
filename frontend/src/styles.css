@@ -315,10 +315,15 @@ body {
 }
 
 .notification-message {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 0.875rem;
   color: var(--ink-primary);
   line-height: 1.4;
 }
+
+.notification-message strong { font-size: 0.8125rem; }
 
 .notification-item:not(.is-unread) .notification-message {
   color: var(--ink-secondary);

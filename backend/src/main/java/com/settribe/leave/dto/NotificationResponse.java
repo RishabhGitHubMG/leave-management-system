@@ -6,11 +6,14 @@ import java.time.LocalDateTime;
 
 public record NotificationResponse(
         Long id,
+        String title,
         String message,
+        String relatedPath,
         boolean read,
         LocalDateTime createdAt
 ) {
     public static NotificationResponse from(Notification n) {
-        return new NotificationResponse(n.getId(), n.getMessage(), n.isRead(), n.getCreatedAt());
+        return new NotificationResponse(n.getId(), n.getTitle(), n.getMessage(), n.getRelatedPath(),
+                n.isRead(), n.getCreatedAt());
     }
 }

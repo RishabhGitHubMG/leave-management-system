@@ -1,26 +1,27 @@
 package com.settribe.leave.service;
 
+import com.settribe.leave.entity.EmailOutbox;
+import com.settribe.leave.entity.NotificationPreference;
+import com.settribe.leave.repository.EmailOutboxRepository;
+import com.settribe.leave.repository.NotificationPreferenceRepository;
+import com.settribe.leave.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.LinkedHashSet;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    private final EmailOutboxRepository outboxRepo;
+    private final UserRepository userRepo;
+    private final NotificationPreferenceRepository preferenceRepo;
 
     @Value("${spring.mail.username:}")
     private String fromAddress;
@@ -31,32 +32,49 @@ public class EmailService {
     @Value("${app.hr-email:}")
     private String hrEmail;
 
-    @Async
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onLeaveEvent(LeaveEmailEvent event) {
+    public boolean isConfigured() {
+        return !fromAddress.isBlank() && !password.isBlank();
+    }
+
+    public String fromAddress() {
+        return fromAddress;
+    }
+
+    @Transactional
+    public void enqueueLeaveEvent(LeaveEmailEvent event) {
         if (fromAddress.isBlank() || password.isBlank()) {
-            log.error("Leave email '{}' not sent: MAIL_USERNAME and MAIL_PASSWORD must both be set",
-                    subject(event));
             return;
         }
+        Map<String, String> recipients = new LinkedHashMap<>();
+        addIfEnabled(recipients, event.employeeEmail());
+        addIfEnabled(recipients, event.managerEmail());
+        addIfEnabled(recipients, hrEmail);
         String subject = subject(event);
         String body = body(event);
-        for (String recipient : recipients(event)) {
-            send(recipient, subject, body);
+        recipients.forEach((normalizedAddress, address) -> {
+            String eventKey = "leave:" + event.requestId() + ":" + event.kind().name() + ":" + normalizedAddress;
+            if (!outboxRepo.existsByEventKey(eventKey)) {
+                outboxRepo.save(EmailOutbox.builder()
+                        .eventKey(eventKey)
+                        .recipient(address)
+                        .subject(subject)
+                        .body(body)
+                        .availableAt(LocalDateTime.now())
+                        .build());
+            }
+        });
+    }
+
+    private void addIfEnabled(Map<String, String> recipients, String address) {
+        if (address == null || address.isBlank()) {
+            return;
         }
-    }
-
-    private Set<String> recipients(LeaveEmailEvent event) {
-        Set<String> recipients = new LinkedHashSet<>();
-        addIfPresent(recipients, event.employeeEmail());
-        addIfPresent(recipients, event.managerEmail());
-        addIfPresent(recipients, hrEmail);
-        return recipients;
-    }
-
-    private static void addIfPresent(Set<String> recipients, String address) {
-        if (address != null && !address.isBlank()) {
-            recipients.add(address.trim().toLowerCase(Locale.ROOT));
+        String normalized = address.trim().toLowerCase(Locale.ROOT);
+        var user = userRepo.findByEmail(normalized).orElse(null);
+        NotificationPreference preferences = user == null ? null
+                : preferenceRepo.findByUserId(user.getId()).orElse(null);
+        if (preferences == null || preferences.isEmailEnabled()) {
+            recipients.putIfAbsent(normalized, address.trim());
         }
     }
 
@@ -71,28 +89,14 @@ public class EmailService {
     }
 
     private static String body(LeaveEmailEvent event) {
-        StringBuilder body = new StringBuilder()
-                .append(event.employeeName()).append("'s ")
-                .append(event.leaveType().name().toLowerCase())
-                .append(" leave from ").append(event.fromDate())
-                .append(" to ").append(event.toDate())
-                .append(" was ").append(event.kind().name().toLowerCase()).append(".");
-        if (event.remarks() != null && !event.remarks().isBlank()) {
-            body.append("\n\nReviewer remarks: ").append(event.remarks());
-        }
-        return body.toString();
-    }
-
-    private void send(String to, String subject, String body) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(to);
-        message.setSubject(subject);
-        message.setText(body);
-        try {
-            mailSender.send(message);
-        } catch (MailException ex) {
-            log.warn("Could not send leave email '{}': {}", subject, ex.getMessage());
-        }
+        String leave = event.leaveType().name().toLowerCase(Locale.ROOT);
+        String details = event.employeeName() + "'s " + leave + " leave from " + event.fromDate()
+                + " to " + event.toDate();
+        return switch (event.kind()) {
+            case SUBMITTED -> details + " was submitted and is awaiting review.";
+            case APPROVED -> details + " was approved.";
+            case REJECTED -> details + " was rejected.\n\nReviewer remarks: " + event.remarks();
+            case CANCELLED -> details + " was cancelled.";
+        };
     }
 }

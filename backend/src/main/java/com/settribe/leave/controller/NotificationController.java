@@ -1,14 +1,20 @@
 package com.settribe.leave.controller;
 
+import com.settribe.leave.dto.NotificationPreferenceDto;
 import com.settribe.leave.dto.NotificationResponse;
 import com.settribe.leave.dto.UnreadCountResponse;
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import com.settribe.leave.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 /**
  * Endpoints:
@@ -25,8 +31,25 @@ public class NotificationController {
     private final NotificationService notificationService;
 
     @GetMapping
-    public List<NotificationResponse> list(Authentication auth) {
-        return notificationService.listMine(auth.getName());
+    public Page<NotificationResponse> list(Authentication auth,
+                                            @RequestParam(defaultValue = "0") int page,
+                                            @RequestParam(defaultValue = "20") int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid notification pagination");
+        }
+        return notificationService.listMine(auth.getName(),
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+    }
+
+    @GetMapping("/preferences")
+    public NotificationPreferenceDto preferences(Authentication auth) {
+        return notificationService.preferences(auth.getName());
+    }
+
+    @PutMapping("/preferences")
+    public NotificationPreferenceDto updatePreferences(Authentication auth,
+                                                       @Valid @RequestBody NotificationPreferenceDto request) {
+        return notificationService.updatePreferences(auth.getName(), request);
     }
 
     @GetMapping("/unread-count")

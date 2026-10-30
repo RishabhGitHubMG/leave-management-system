@@ -29,8 +29,8 @@ public class AdminUserController {
     }
 
     @PostMapping
-    public ResponseEntity<UserResponse> create(@Valid @RequestBody AdminUserRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(userService.create(request));
+    public ResponseEntity<UserResponse> create(Authentication auth, @Valid @RequestBody AdminUserRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(userService.create(auth.getName(), request));
     }
 
     @PutMapping("/{id}")

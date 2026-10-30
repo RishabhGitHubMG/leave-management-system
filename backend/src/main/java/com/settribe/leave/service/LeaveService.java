@@ -33,6 +33,8 @@ public class LeaveService {
     private final LeaveRequestRepository leaveRepo;
     private final UserRepository userRepo;
     private final NotificationService notificationService;
+    private final AuditService auditService;
+    private final EmailService emailService;
     private final ApplicationEventPublisher eventPublisher;
 
     private static final List<LeaveStatus> INACTIVE_STATUSES = List.of(LeaveStatus.REJECTED, LeaveStatus.CANCELLED);
@@ -79,7 +81,12 @@ public class LeaveService {
                 .status(LeaveStatus.PENDING) // New applications always start as PENDING
                 .build();
         LeaveRequest saved = leaveRepo.save(leave);
-        eventPublisher.publishEvent(emailEvent(LeaveEmailEvent.Kind.SUBMITTED, saved, null));
+        notificationService.notifyLeaveSubmission(saved);
+        auditService.record(email, "LEAVE_SUBMITTED", "LeaveRequest", saved.getId().toString(),
+                "Leave request submitted", "SUCCESS");
+        LeaveEmailEvent event = emailEvent(LeaveEmailEvent.Kind.SUBMITTED, saved, null);
+        emailService.enqueueLeaveEvent(event);
+        eventPublisher.publishEvent(event);
         return LeaveResponse.from(saved);
     }
 
@@ -121,6 +128,9 @@ public class LeaveService {
         if (leaveRepo.updatePendingStatus(id, LeaveStatus.CANCELLED, null, LeaveStatus.PENDING) == 0) {
             throw new ApiException(HttpStatus.CONFLICT, "Only pending requests can be cancelled");
         }
+        auditService.record(email, "LEAVE_CANCELLED", "LeaveRequest", id.toString(),
+                "Pending leave request cancelled", "SUCCESS");
+        emailService.enqueueLeaveEvent(event);
         eventPublisher.publishEvent(event);
     }
 
@@ -179,10 +189,16 @@ public class LeaveService {
         LeaveRequest updated = leaveRepo.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
         notificationService.notifyLeaveDecision(updated);
+        auditService.record(email, request.status() == LeaveStatus.APPROVED ? "LEAVE_APPROVED" : "LEAVE_REJECTED",
+                "LeaveRequest", updated.getId().toString(),
+                request.status() == LeaveStatus.REJECTED ? "Leave request rejected with reviewer remarks" : "Leave request approved",
+                "SUCCESS");
         LeaveEmailEvent.Kind kind = request.status() == LeaveStatus.APPROVED
                 ? LeaveEmailEvent.Kind.APPROVED
                 : LeaveEmailEvent.Kind.REJECTED;
-        eventPublisher.publishEvent(emailEvent(kind, updated, remarks));
+        LeaveEmailEvent event = emailEvent(kind, updated, remarks);
+        emailService.enqueueLeaveEvent(event);
+        eventPublisher.publishEvent(event);
         return LeaveResponse.from(updated);
     }
 
@@ -193,7 +209,7 @@ public class LeaveService {
     private LeaveEmailEvent emailEvent(LeaveEmailEvent.Kind kind, LeaveRequest leave, String remarks) {
         User applicant = leave.getUser();
         User manager = applicant.getManager();
-        return new LeaveEmailEvent(kind, applicant.getName(), applicant.getEmail(),
+        return new LeaveEmailEvent(kind, leave.getId(), applicant.getName(), applicant.getEmail(),
                 manager == null ? null : manager.getEmail(),
                 leave.getLeaveType(), leave.getFromDate(), leave.getToDate(), remarks);
     }

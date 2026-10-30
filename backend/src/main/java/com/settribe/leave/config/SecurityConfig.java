@@ -60,7 +60,9 @@ public class SecurityConfig {
                         // Public health check for Render; exact path only
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/", "/index.html", "/favicon.svg", "/assets/**",
-                                "/login", "/register", "/dashboard", "/admin/users").permitAll()
+                                "/login", "/register", "/dashboard", "/admin/users", "/settings/notifications").permitAll()
+                        // Audit data contains sensitive operational history
+                        .requestMatchers("/api/audit/**").hasAnyRole("ADMIN", "HR")
                         // Leave review: managers (direct reports), HR and admins (all employees)
                         .requestMatchers("/api/admin/leaves/**").hasAnyRole("ADMIN", "HR", "MANAGER")
                         // Admin-only endpoints: user and role management

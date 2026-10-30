@@ -9,6 +9,7 @@ import java.time.LocalDate;
  */
 public record LeaveEmailEvent(
         Kind kind,
+        Long requestId,
         String employeeName,
         String employeeEmail,
         String managerEmail,

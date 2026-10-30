@@ -12,11 +12,17 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: render
-      - key: DB_URL
-        sync: false
+      - key: DB_CONNECTION_STRING
+        fromDatabase:
+          name: leave-management-db
+          property: connectionString
       - key: DB_USER
-        sync: false
+        fromDatabase:
+          name: leave-management-db
+          property: user
       - key: DB_PASSWORD
-        sync: false
+        fromDatabase:
+          name: leave-management-db
+          property: password
       - key: JWT_SECRET
         generateValue: true

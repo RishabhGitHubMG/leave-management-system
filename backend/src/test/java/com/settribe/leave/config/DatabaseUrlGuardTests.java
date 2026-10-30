@@ -61,6 +61,31 @@ class DatabaseUrlGuardTests {
     }
 
     @Test
+    void derivesCredentialFreeJdbcUrlFromRenderConnectionString() {
+        MockEnvironment environment = environment("", VALID_SECRET, true, "render");
+        environment.setProperty("spring.datasource.url", "${DB_URL}");
+        environment.setProperty("DB_CONNECTION_STRING",
+                "postgresql://render-user:render-password@db.example.com:5432/leave?sslmode=require");
+
+        assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
+        assertEquals("jdbc:postgresql://db.example.com:5432/leave?sslmode=require",
+                environment.getProperty("DB_URL"));
+    }
+
+    @Test
+    void rejectsInvalidRenderConnectionStringWithoutExposingCredentials() {
+        MockEnvironment environment = environment("", VALID_SECRET, true, "render");
+        environment.setProperty("spring.datasource.url", "${DB_URL}");
+        environment.setProperty("DB_CONNECTION_STRING", "postgresql://user:private-password@/leave");
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> guard.postProcessEnvironment(environment, null));
+
+        assertEquals("DB_CONNECTION_STRING must be a valid PostgreSQL connection string.", error.getMessage());
+        assertFalse(error.getMessage().contains("private-password"));
+    }
+
+    @Test
     void rejectsMysqlUrlOnRender() {
         MockEnvironment environment = environment(MYSQL_URL, VALID_SECRET, true, "render");
 

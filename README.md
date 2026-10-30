@@ -179,11 +179,11 @@ The GitHub Actions workflow `.github/workflows/backend-postgres-migration.yml` r
 
 ### Render Blueprint deployment
 
-The root `render.yaml` defines one Docker web service that builds the React/Vite frontend and Spring Boot API together. Both target `main` in Oregon and deploy on commits. The backend serves the SPA fallback and `/api` routes on one origin, so no static-site URL, `VITE_API_URL`, CORS wildcard, or SPA rewrite is needed. No PostgreSQL resource is declared: the Blueprint will not provision, change, or delete a database.
+The root `render.yaml` defines one Docker web service that builds the React/Vite frontend and Spring Boot API together. The service targets `main` in Oregon and deploys on commits. The backend serves the SPA and `/api` routes on one origin, so no separate static-site URL, `VITE_API_URL`, or SPA rewrite is needed. The Blueprint references the existing Render Postgres resource `leave-management-db`; it does not declare or create a database resource.
 
-The Blueprint selects `SPRING_PROFILES_ACTIVE=render` and generates `JWT_SECRET` in Render. During initial Blueprint creation, enter `DB_URL`, `DB_USER`, and the rotated `DB_PASSWORD` privately in Render; their `sync: false` entries are not stored in Git, and later Blueprint syncs do not prompt for them again. The JDBC URL must use the verified internal hostname reachable from Oregon. Render supplies `PORT` and `RENDER_EXTERNAL_URL`; the application uses the former and defaults its same-origin CORS setting to the latter. If you attach a custom domain, set `CORS_ORIGIN` to that exact origin in the Render dashboard.
+The Blueprint sets `SPRING_PROFILES_ACTIVE=render`, generates `JWT_SECRET`, and resolves `DB_CONNECTION_STRING`, `DB_USER`, and `DB_PASSWORD` from the existing database. The application converts the private `postgresql://` connection string to a credential-free `jdbc:postgresql://HOST:PORT/DATABASE` `DB_URL` before validating and connecting. Render supplies `PORT` and `RENDER_EXTERNAL_URL`; the app uses the former and defaults same-origin CORS to the latter. If you attach a custom domain, set `CORS_ORIGIN` to that exact origin in Render.
 
-The previously supplied database name, username, and hostname were not independently verified. Confirm in Render that the existing database is the intended resource, in a compatible region, reachable by the new service, and either empty or already has this Flyway history. Check its backup and migration history before first deployment; do not create a replacement database or reset a populated one. Enter credentials only in Render's private settings. The Blueprint does not inspect Render resources or perform deployment.
+The database resource must remain named `leave-management-db` and be in the same Render workspace as the Blueprint. Render updates referenced properties on Blueprint sync. Before first deployment, verify the database's backup and Flyway history; do not reset or baseline a populated database without a reviewed migration plan. No manual database credentials or `DB_URL` entry are required for the service. The Blueprint cannot verify database contents or perform deployment.
 
 Render health checks use `GET /api/health`, which returns unavailable if the database cannot answer a simple readiness query. The `render` profile enables Flyway and fixes Hibernate to `validate`; do not set `DDL_AUTO`. `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap settings that only create an account when the email does not already exist. `MAIL_USERNAME`, `MAIL_PASSWORD`, and `HR_EMAIL` are optional; email notifications require SMTP credentials, but these variables are not required for startup. The one-time `admin-account-update` profile is not used by the web service. After the initial setup, pushes to `main` trigger automatic deployments.
 
@@ -191,7 +191,7 @@ Render health checks use `GET /api/health`, which returns unavailable if the dat
 
 | Symptom | Cause and fix |
 |---|---|
-| `DB_URL is required` | The profile did not receive `DB_URL`. Set it in `.env` (Compose) or Render Environment. |
+| `DB_URL is required` | Confirm Compose has `DB_URL`, or that the Render service is synced to the Blueprint and can resolve `DB_CONNECTION_STRING` from the existing `leave-management-db` resource. |
 | `DB_URL must be a jdbc:postgresql URL` | A MySQL or other URL was set for `render`/`docker`. Use `jdbc:postgresql://host:5432/database`. |
 | `DB_URL points to H2, which is not allowed on Render` | H2 is only for the `local` and test profiles. |
 | `Connection refused` in Compose | Check `docker compose ps postgres` and `docker compose logs postgres`. Inside Compose the host is `postgres`, not `localhost`. |

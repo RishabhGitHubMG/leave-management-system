@@ -1,12 +1,16 @@
 package com.settribe.leave.config;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MapPropertySource;
 
 public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
 
@@ -14,6 +18,11 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
+        if (isOnRender(environment)
+                && resolved(environment, "spring.datasource.url").isBlank()
+                && !resolved(environment, "DB_CONNECTION_STRING").isBlank()) {
+            setRenderJdbcUrl(environment);
+        }
         String url = resolved(environment, "spring.datasource.url");
         if (url.isBlank()) {
             throw new IllegalStateException("DB_URL is required: set it to a JDBC URL for the database.");
@@ -53,6 +62,32 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
     @Override
     public int getOrder() {
         return Ordered.LOWEST_PRECEDENCE;
+    }
+
+    private static void setRenderJdbcUrl(ConfigurableEnvironment environment) {
+        String connectionString = resolved(environment, "DB_CONNECTION_STRING");
+        try {
+            URI connection = new URI(connectionString);
+            String authority = connection.getRawAuthority();
+            int userInfoEnd = authority == null ? -1 : authority.lastIndexOf('@');
+            if (!"postgresql".equalsIgnoreCase(connection.getScheme())
+                    || connection.getHost() == null
+                    || connection.getPort() < 1
+                    || connection.getRawPath() == null
+                    || connection.getRawPath().length() < 2
+                    || connection.getRawFragment() != null
+                    || userInfoEnd < 0) {
+                throw new IllegalArgumentException();
+            }
+            String jdbcUrl = "jdbc:postgresql://" + authority.substring(userInfoEnd + 1) + connection.getRawPath();
+            if (connection.getRawQuery() != null) {
+                jdbcUrl += "?" + connection.getRawQuery();
+            }
+            environment.getPropertySources().addFirst(
+                    new MapPropertySource("renderDatabaseConnection", Map.of("DB_URL", jdbcUrl)));
+        } catch (URISyntaxException | IllegalArgumentException exception) {
+            throw new IllegalStateException("DB_CONNECTION_STRING must be a valid PostgreSQL connection string.");
+        }
     }
 
     // Render sets RENDER=true on every runtime, so it is checked independently of SPRING_PROFILES_ACTIVE.

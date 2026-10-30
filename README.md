@@ -191,7 +191,7 @@ Render health checks use `GET /api/health`, which returns unavailable if the dat
 
 | Symptom | Cause and fix |
 |---|---|
-| `DB_URL is required` | The profile did not receive `DB_URL`. Set it in `.env` (Compose) or Render Environment. |
+| `DB_URL is required` | Confirm Compose has `DB_URL`, or that the Render service is synced to the Blueprint and can resolve `DB_CONNECTION_STRING` from the existing `leave-management-db` resource. |
 | `DB_URL must be a jdbc:postgresql URL` | A MySQL or other URL was set for `render`/`docker`. Use `jdbc:postgresql://host:5432/database`. |
 | `DB_URL points to H2, which is not allowed on Render` | H2 is only for the `local` and test profiles. |
 | `Connection refused` in Compose | Check `docker compose ps postgres` and `docker compose logs postgres`. Inside Compose the host is `postgres`, not `localhost`. |

@@ -78,20 +78,26 @@ class DashboardTests {
 
     @Test
     void hrAggregatesApprovedRequestsByDepartmentAndType() {
-        String employee = createUser(Role.EMPLOYEE, null, "Product");
+        String department = "Product-" + UUID.randomUUID();
+        String employee = createUser(Role.EMPLOYEE, null, department);
         String admin = createUser(Role.ADMIN, null, null);
-        Long requestId = submit(employee);
+        Long requestId = submit(employee, LeaveType.SICK);
         leaveService.updateStatus(admin, requestId, new StatusUpdateRequest(LeaveStatus.APPROVED, null));
 
-        var dashboard = dashboardService.hr(admin, LocalDate.now().minusDays(1), LocalDate.now().plusDays(10), null, null);
+        var dashboard = dashboardService.hr(admin, LocalDate.now().minusDays(1), LocalDate.now().plusDays(10),
+                department, LeaveType.SICK);
 
-        assertThat(dashboard.requestsByDepartment()).containsEntry("Product", 1L);
-        assertThat(dashboard.requestsByLeaveType()).containsEntry("ANNUAL", 1L);
+        assertThat(dashboard.requestsByDepartment()).containsEntry(department, 1L);
+        assertThat(dashboard.requestsByLeaveType()).containsEntry("SICK", 1L);
     }
 
     private Long submit(String email) {
+        return submit(email, LeaveType.ANNUAL);
+    }
+
+    private Long submit(String email, LeaveType type) {
         LocalDate from = LocalDate.now().plusDays(2);
-        return leaveService.create(email, new LeaveRequestDto(LeaveType.ANNUAL, from, from.plusDays(1),
+        return leaveService.create(email, new LeaveRequestDto(type, from, from.plusDays(1),
                 "Approved leave request for dashboard test")).id();
     }
 

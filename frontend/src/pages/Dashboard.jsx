@@ -342,7 +342,7 @@ export default function Dashboard() {
   const requestId = searchParams.get("requestId");
 
   /* ── State ── */
-  const [tab, setTab] = useState(() => requestId && isReviewer ? "all" : "mine");
+  const [tab, setTab] = useState(() => isReviewer && (requestId || searchParams.get("tab") === "all") ? "all" : "mine");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter]     = useState("");
   const [searchQuery, setSearchQuery]   = useState("");
@@ -575,6 +575,16 @@ export default function Dashboard() {
               <CalendarPlus size={15} />
               Apply for Leave
             </button>
+          )}
+          {user?.role === "MANAGER" && (
+            <Link className="btn btn-secondary" to="/dashboard/manager">Team Dashboard</Link>
+          )}
+          <Link className="btn btn-secondary" to="/reports">Reports</Link>
+          {["ADMIN", "HR"].includes(user?.role) && (
+            <>
+              <Link className="btn btn-secondary" to="/dashboard/analytics">Leave Analytics</Link>
+              <Link className="btn btn-secondary" to="/admin/audit">Audit history</Link>
+            </>
           )}
           {isAdmin && (
             <button className="btn btn-secondary" onClick={() => navigate("/admin/users")}>

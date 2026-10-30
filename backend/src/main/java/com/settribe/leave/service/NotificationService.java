@@ -14,7 +14,6 @@ import com.settribe.leave.repository.NotificationPreferenceRepository;
 import com.settribe.leave.repository.NotificationRepository;
 import com.settribe.leave.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -28,15 +27,6 @@ public class NotificationService {
     private final NotificationRepository notificationRepo;
     private final NotificationPreferenceRepository preferenceRepo;
     private final UserRepository userRepo;
-
-    @Value("${app.notifications.slack.enabled:false}")
-    private boolean slackEnabled;
-
-    @Value("${app.notifications.teams.enabled:false}")
-    private boolean teamsEnabled;
-
-    @Value("${app.notifications.whatsapp.enabled:false}")
-    private boolean whatsappEnabled;
 
     @Transactional(readOnly = true)
     public Page<NotificationResponse> listMine(String email, Pageable pageable) {
@@ -76,10 +66,8 @@ public class NotificationService {
     @Transactional
     public NotificationPreferenceDto updatePreferences(String email, NotificationPreferenceDto request) {
         User user = currentUser(email);
-        if ((request.slackEnabled() && !slackEnabled)
-                || (request.teamsEnabled() && !teamsEnabled)
-                || (request.whatsappEnabled() && !whatsappEnabled)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "The organization has not enabled that notification channel");
+        if (request.slackEnabled() || request.teamsEnabled() || request.whatsappEnabled()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "External notification channels are not enabled");
         }
         NotificationPreference preference = preferenceRepo.findByUserId(user.getId())
                 .orElseGet(() -> defaultPreferences(user));

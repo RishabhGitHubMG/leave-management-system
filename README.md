@@ -173,7 +173,7 @@ The GitHub Actions workflow `.github/workflows/backend-postgres-migration.yml` r
 
 - Location: `backend/src/main/resources/db/migration/`. The current baseline is `V1__initial_schema.sql`, which creates `users`, `leave_requests`, and `notifications` with their constraints and indexes.
 - Flyway is enabled only by the `docker` and `render` profiles. It runs at startup before Hibernate validates the mapping. The `local` and `test` profiles do not use Flyway.
-- Flyway records applied versions in its `flyway_schema_history` table. Never edit a migration that has been applied anywhere; Flyway reports a checksum mismatch. Add a new `V2__...sql` file for every schema change.
+- Flyway records applied versions in its `flyway_schema_history` table. Never edit a migration that has been applied anywhere; Flyway reports a checksum mismatch. Add the next unused `V<n>__...sql` file for every schema change. Current additions are V2 (notification preferences/audit), V3 (email outbox), and V4 (email delivery attempts).
 - Flyway initializes an **empty** database. It refuses a non-empty schema that has no Flyway history, so do not point the backend at an existing database that was not created by these migrations.
 - `sql/schema.sql` includes this same V1 file for manual, throwaway databases. It is not a second schema source.
 
@@ -185,7 +185,7 @@ The Blueprint sets `SPRING_PROFILES_ACTIVE=render`, generates `JWT_SECRET`, and 
 
 The database resource must remain named `leave-management-db` and be in the same Render workspace as the Blueprint. Render updates referenced properties on Blueprint sync. Before first deployment, verify the database's backup and Flyway history; do not reset or baseline a populated database without a reviewed migration plan. No manual database credentials or `DB_URL` entry are required for the service. The Blueprint cannot verify database contents or perform deployment.
 
-Render health checks use `GET /api/health`, which returns unavailable if the database cannot answer a simple readiness query. The `render` profile enables Flyway and fixes Hibernate to `validate`; do not set `DDL_AUTO`. `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap settings that only create an account when the email does not already exist. `MAIL_USERNAME`, `MAIL_PASSWORD`, and `HR_EMAIL` are optional; email notifications require SMTP credentials, but these variables are not required for startup. The one-time `admin-account-update` profile is not used by the web service. After the initial setup, pushes to `main` trigger automatic deployments.
+Render health checks use `GET /api/health`, which returns unavailable if the database cannot answer a simple readiness query. The `render` profile enables Flyway and fixes Hibernate to `validate`; do not set `DDL_AUTO`. `ADMIN_EMAIL` and `ADMIN_PASSWORD` are optional bootstrap settings that only create an account when the email does not already exist. `MAIL_USERNAME`, `MAIL_PASSWORD`, and `HR_EMAIL` are optional; email outbox delivery requires SMTP credentials, but these variables are not required for startup. Optional schedule settings are `APP_TIMEZONE` (default `UTC`), `EMAIL_DISPATCH_MS` (default `30000`), `APPROVAL_REMINDER_HOURS` (default `24`), `APPROVAL_REMINDER_CRON`, `MANAGER_DIGEST_CRON`, and `APP_BASE_URL`. The one-time `admin-account-update` profile is not used by the web service. After the initial setup, pushes to `main` trigger automatic deployments.
 
 ### Troubleshooting
 
@@ -214,8 +214,16 @@ Render health checks use `GET /api/health`, which returns unavailable if the dat
 | POST | `/api/leaves` | Authenticated | Apply for leave |
 | PUT | `/api/leaves/{id}` | Owner | Update a pending request |
 | DELETE | `/api/leaves/{id}` | Owner | Cancel a pending request (kept with status `CANCELLED`) |
-| GET | `/api/notifications` | Authenticated | List own notifications |
+| GET | `/api/notifications?page=&size=` | Authenticated | List own notifications (paged) |
 | GET | `/api/notifications/unread-count` | Authenticated | Get unread notification count |
+| GET / PUT | `/api/notifications/preferences` | Authenticated | Read or update own notification settings |
+| GET | `/api/dashboard/employee` | Authenticated | Own leave activity; balance policy availability |
+| GET | `/api/dashboard/manager` | Manager | Direct-report availability and pending approvals |
+| GET | `/api/dashboard/hr?fromDate=&toDate=&department=&leaveType=` | HR, Admin | Filtered aggregate analytics |
+| GET | `/api/reports/leaves` | Authenticated | Filtered, paged leave report within caller's scope |
+| GET | `/api/reports/leaves.csv` | Authenticated | CSV export using the same access scope and filters |
+| GET | `/api/reports/payroll/unpaid-leave.csv?fromDate=&toDate=` | HR, Admin | Approved unpaid leave dates and inclusive calendar-day totals; no salary deductions |
+| GET | `/api/audit` | HR, Admin | Search paged audit records |
 | PUT | `/api/notifications/{id}/read` | Authenticated | Mark own notification as read |
 | PUT | `/api/notifications/read-all` | Authenticated | Mark all own notifications as read |
 | GET | `/api/admin/leaves?status=&type=` | Manager, HR, Admin | List requests the caller may review (managers see direct reports only) |
@@ -236,6 +244,12 @@ Send the token as `Authorization: Bearer <token>`.
 | 403 | Authenticated but not authorized for the requested admin operation |
 | 404 | Not found, or the request belongs to another user |
 | 409 | Duplicate email, or the request is no longer pending |
+
+Notifications, settings, dashboards and reports are also available from the authenticated application navigation. CSV is currently the only implemented report file format; Excel and PDF exports are not available yet.
+
+Leave dates are counted as inclusive calendar days. The application has no configured holiday/workday calendar, half-day model, or organization entitlement policy; balance figures are therefore not presented or enforced. Payroll output contains approved unpaid leave dates and calendar-day totals only. No encashment values or salary deductions are calculated. SMTP delivery is persisted in an outbox; if SMTP credentials are absent, messages remain queued and are not sent. Slack, Teams, WhatsApp, and automated data deletion are not enabled.
+
+The audit API records the remote address visible to the application. Behind a reverse proxy that may be the proxy address; forwarded headers are intentionally not trusted by default. Configure proxy handling only after reviewing the deployment's trusted-proxy boundary.
 
 ## Security and business rules
 

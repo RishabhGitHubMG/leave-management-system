@@ -151,6 +151,39 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
                                        @Param("department") String department,
                                        @Param("leaveType") LeaveType leaveType);
 
+    @Query(value = """
+            SELECT l FROM LeaveRequest l JOIN FETCH l.user u
+            WHERE (:ownerId IS NULL OR u.id = :ownerId)
+              AND (:managerId IS NULL OR u.manager.id = :managerId)
+              AND (:department IS NULL OR u.department = :department)
+              AND (:employeeId IS NULL OR u.id = :employeeId)
+              AND (:leaveType IS NULL OR l.leaveType = :leaveType)
+              AND (:status IS NULL OR l.status = :status)
+              AND (:fromDate IS NULL OR l.toDate >= :fromDate)
+              AND (:toDate IS NULL OR l.fromDate <= :toDate)
+            """,
+            countQuery = """
+            SELECT COUNT(l) FROM LeaveRequest l JOIN l.user u
+            WHERE (:ownerId IS NULL OR u.id = :ownerId)
+              AND (:managerId IS NULL OR u.manager.id = :managerId)
+              AND (:department IS NULL OR u.department = :department)
+              AND (:employeeId IS NULL OR u.id = :employeeId)
+              AND (:leaveType IS NULL OR l.leaveType = :leaveType)
+              AND (:status IS NULL OR l.status = :status)
+              AND (:fromDate IS NULL OR l.toDate >= :fromDate)
+              AND (:toDate IS NULL OR l.fromDate <= :toDate)
+            """)
+    org.springframework.data.domain.Page<LeaveRequest> searchReports(
+            @Param("ownerId") Long ownerId,
+            @Param("managerId") Long managerId,
+            @Param("department") String department,
+            @Param("employeeId") Long employeeId,
+            @Param("leaveType") LeaveType leaveType,
+            @Param("status") LeaveStatus status,
+            @Param("fromDate") java.time.LocalDate fromDate,
+            @Param("toDate") java.time.LocalDate toDate,
+            org.springframework.data.domain.Pageable pageable);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE LeaveRequest l SET l.status = :status, l.adminRemarks = :remarks WHERE l.id = :id AND l.status = :pendingStatus")
     int updatePendingStatus(@Param("id") Long id,

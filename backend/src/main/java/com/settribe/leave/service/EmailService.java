@@ -42,9 +42,6 @@ public class EmailService {
 
     @Transactional
     public void enqueueLeaveEvent(LeaveEmailEvent event) {
-        if (fromAddress.isBlank() || password.isBlank()) {
-            return;
-        }
         Map<String, String> recipients = new LinkedHashMap<>();
         addIfEnabled(recipients, event.employeeEmail());
         addIfEnabled(recipients, event.managerEmail());
@@ -67,7 +64,7 @@ public class EmailService {
 
     @Transactional
     public void enqueueMessage(String recipient, String eventKey, String subject, String body) {
-        if (!isConfigured() || recipient == null || recipient.isBlank() || outboxRepo.existsByEventKey(eventKey)) {
+        if (recipient == null || recipient.isBlank() || outboxRepo.existsByEventKey(eventKey)) {
             return;
         }
         String normalized = recipient.trim().toLowerCase(Locale.ROOT);

@@ -73,6 +73,27 @@ class DatabaseUrlGuardTests {
     }
 
     @Test
+    void stripsCredentialCharactersBeforeParsingRenderConnectionString() {
+        MockEnvironment environment = environment("", VALID_SECRET, true, "render");
+        environment.setProperty("spring.datasource.url", "${DB_URL}");
+        environment.setProperty("DB_CONNECTION_STRING",
+                "postgresql://render-user:render/password@db.example.com/leave");
+
+        assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
+        assertEquals("jdbc:postgresql://db.example.com:5432/leave", environment.getProperty("DB_URL"));
+    }
+
+    @Test
+    void addsDefaultPostgresPortWhenRenderConnectionStringOmitsIt() {
+        MockEnvironment environment = environment("", VALID_SECRET, true, "render");
+        environment.setProperty("spring.datasource.url", "${DB_URL}");
+        environment.setProperty("DB_CONNECTION_STRING", "postgresql://render-user:render-password@db.example.com/leave");
+
+        assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
+        assertEquals("jdbc:postgresql://db.example.com:5432/leave", environment.getProperty("DB_URL"));
+    }
+
+    @Test
     void rejectsInvalidRenderConnectionStringWithoutExposingCredentials() {
         MockEnvironment environment = environment("", VALID_SECRET, true, "render");
         environment.setProperty("spring.datasource.url", "${DB_URL}");

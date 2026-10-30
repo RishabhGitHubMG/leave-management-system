@@ -67,19 +67,27 @@ public class DatabaseUrlGuard implements EnvironmentPostProcessor, Ordered {
     private static void setRenderJdbcUrl(ConfigurableEnvironment environment) {
         String connectionString = resolved(environment, "DB_CONNECTION_STRING");
         try {
-            URI connection = new URI(connectionString);
-            String authority = connection.getRawAuthority();
-            int userInfoEnd = authority == null ? -1 : authority.lastIndexOf('@');
-            if (!"postgresql".equalsIgnoreCase(connection.getScheme())
-                    || connection.getHost() == null
-                    || connection.getPort() < 1
-                    || connection.getRawPath() == null
-                    || connection.getRawPath().length() < 2
-                    || connection.getRawFragment() != null
-                    || userInfoEnd < 0) {
+            String scheme = "postgresql://";
+            int userInfoEnd = connectionString.lastIndexOf('@');
+            if (!connectionString.regionMatches(true, 0, scheme, 0, scheme.length())
+                    || userInfoEnd < scheme.length()) {
                 throw new IllegalArgumentException();
             }
-            String jdbcUrl = "jdbc:postgresql://" + authority.substring(userInfoEnd + 1) + connection.getRawPath();
+            URI connection = new URI(scheme + connectionString.substring(userInfoEnd + 1));
+            String host = connection.getHost();
+            int port = connection.getPort();
+            if (!"postgresql".equalsIgnoreCase(connection.getScheme())
+                    || host == null
+                    || (port != -1 && (port < 1 || port > 65535))
+                    || connection.getRawPath() == null
+                    || connection.getRawPath().length() < 2
+                    || connection.getRawFragment() != null) {
+                throw new IllegalArgumentException();
+            }
+            if (port == -1) {
+                port = 5432;
+            }
+            String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + connection.getRawPath();
             if (connection.getRawQuery() != null) {
                 jdbcUrl += "?" + connection.getRawQuery();
             }
